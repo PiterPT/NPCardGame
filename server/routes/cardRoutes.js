@@ -93,13 +93,13 @@ router.post('/sell', async (req, res) => {
  * @desc    Sacrifica uma carta para dar XP e subir o nível de outra carta
  */
 router.post('/feed', async (req, res) => {
-  const { userId, targetCardId, sacrificeCardId } = req.body;
+  const { userId, targetCardId, sacrificeCardIds } = req.body;
 
-  if (!userId || !targetCardId || !sacrificeCardId) {
+  if (!userId || !targetCardId || !sacrificeCardIds || sacrificeCardIds.length === 0) {
     return res.status(400).json({ error: 'Faltam dados obrigatórios para o feed.' });
   }
 
-  if (targetCardId === sacrificeCardId) {
+  if (sacrificeCardIds.includes(targetCardId)) {
     return res.status(400).json({ error: 'Uma carta não se pode alimentar a si própria.' });
   }
 
@@ -108,33 +108,45 @@ router.post('/feed', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Procurar a carta alvo (que vai subir de nível)
+    // 1. Obter a carta alvo
     const targetRes = await client.query(
       'SELECT * FROM cards WHERE id_card = $1 AND id_user = $2',
       [targetCardId, userId]
     );
 
-    // 2. Procurar a carta sacrificada
-    const sacrificeRes = await client.query(
-      'SELECT * FROM cards WHERE id_card = $1 AND id_user = $2',
-      [sacrificeCardId, userId]
-    );
-
-    if (targetRes.rows.length === 0 || sacrificeRes.rows.length === 0) {
+    if (targetRes.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Uma ou ambas as cartas não foram encontradas no teu inventário.' });
+      return res.status(404).json({ error: 'Carta alvo não encontrada.' });
     }
 
     const targetCard = targetRes.rows[0];
-    const sacrificeCard = sacrificeRes.rows[0];
 
-    // 3. Calcular quanto XP a carta sacrificada fornece
-    const xpGanho = calculateFeedXp(sacrificeCard);
+    // 2. Obter todas as cartas de sacrifício de uma vez
+    const sacrificesRes = await client.query(
+      'SELECT * FROM cards WHERE id_card = ANY($1::int[]) AND id_user = $2',
+      [sacrificeCardIds, userId]
+    );
 
-    // 4. Lógica de Level Up da Carta Alvo com retenção de excedente (resto de XP)
+    if (sacrificesRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Nenhuma carta de sacrifício válida encontrada.' });
+    }
+
+    // 3. Calcular o XP total somando todas as cartas sacrificadas
+    let totalXpGanha = 0;
+    for (const sacrificeCard of sacrificesRes.rows) {
+      const rarityMultipliers = { E: 50, D: 100, C: 250, B: 500, A: 1000, S: 2000, UR: 5000 };
+      const baseMultiplier = rarityMultipliers[sacrificeCard.classe] || 50;
+      const statusSum = (sacrificeCard.vida || 0) + (sacrificeCard.tai || 0) + (sacrificeCard.nin || 0);
+      const levelBonus = (sacrificeCard.level || 1) * 100;
+      
+      totalXpGanha += baseMultiplier + Math.floor(statusSum * 0.5) + levelBonus;
+    }
+
+    // 4. Calcular o novo Nível e XP da carta alvo
     let currentLevel = targetCard.level || 1;
-    let currentXp = (targetCard.xp || 0) + xpGanho;
-    let xpNeeded = currentLevel * 1000; // Regra de XP necessário por nível
+    let currentXp = (targetCard.xp || 0) + totalXpGanha;
+    let xpNeeded = currentLevel * 1000;
 
     while (currentXp >= xpNeeded) {
       currentXp -= xpNeeded;
@@ -142,10 +154,13 @@ router.post('/feed', async (req, res) => {
       xpNeeded = currentLevel * 1000;
     }
 
-    // 5. Eliminar a carta sacrificada
-    await client.query('DELETE FROM cards WHERE id_card = $1', [sacrificeCardId]);
+    // 5. Apagar TODAS as cartas sacrificadas da base de dados de uma vez
+    await client.query(
+      'DELETE FROM cards WHERE id_card = ANY($1::int[]) AND id_user = $2',
+      [sacrificeCardIds, userId]
+    );
 
-    // 6. Atualizar a carta alvo com o novo nível e XP acumulado
+    // 6. Atualizar a carta alvo com o novo nível e XP
     await client.query(
       'UPDATE cards SET level = $1, xp = $2 WHERE id_card = $3',
       [currentLevel, currentXp, targetCardId]
@@ -155,15 +170,16 @@ router.post('/feed', async (req, res) => {
 
     return res.json({
       success: true,
-      message: `${targetCard.name} recebeu ${xpGanho} XP e ${sacrificeCard.name} foi consumida!`,
-      xpGanho,
+      message: `Feed concluído! Ganhaste ${totalXpGanha} XP no total.`,
       newLevel: currentLevel,
-      newXp: currentXp
+      newXp: currentXp,
+      deletedIds: sacrificeCardIds
     });
+
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Erro ao realizar feed:', error);
-    return res.status(500).json({ error: 'Erro interno ao realizar o feed da carta.' });
+    console.error('Erro ao realizar feed em lote:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar o feed.' });
   } finally {
     client.release();
   }

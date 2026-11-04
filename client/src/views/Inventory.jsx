@@ -91,51 +91,54 @@ export default function Inventory({ user }) {
   };
 
   // Processar Feed com as Cartas Selecionadas
-  const handleConfirmFeed = () => {
+const handleConfirmFeed = () => {
     if (!targetCardForFeed) {
-      showNotice('Escolha a carta principal que vai receber a experiência.', 'warning');
+      showNotice('Escolhe a carta principal que vai receber a experiência.', 'warning');
       return;
     }
 
-    // Filtrar para não usar a carta alvo como sacrifício
-    const sacrifices = selectedCards.filter(id => id !== targetCardForFeed.id_card);
+    // Obter apenas os IDs das cartas selecionadas que NÃO são a carta alvo
+    const sacrificeCardIds = selectedCards.filter(id => id !== targetCardForFeed.id_card);
 
-    if (sacrifices.length === 0) {
+    if (sacrificeCardIds.length === 0) {
       showNotice('Seleciona pelo menos uma carta de sacrifício para o Feed.', 'warning');
       return;
     }
 
     const userId = user.id_user || user.id;
 
-    // Envia o feed sequencialmente para cada carta selecionada
-    Promise.all(
-      sacrifices.map(sacrificeCardId =>
-        fetch('https://npcardgame.onrender.com/api/cards/feed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            targetCardId: targetCardForFeed.id_card,
-            sacrificeCardId
-          })
-        }).then(res => res.json())
-      )
-    )
-    .then(results => {
-      const lastResult = results[results.length - 1];
-      if (lastResult && lastResult.success) {
-        setCards(prev => prev.filter(c => sacrifices.includes(c.id_card) === false).map(c => {
+    fetch('https://npcardgame.onrender.com/api/cards/feed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        targetCardId: targetCardForFeed.id_card,
+        sacrificeCardIds // Envia o array inteiro de IDs
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        // Remove imediatamente as cartas sacrificadas do ecrã e atualiza o nível/XP da alvo
+        setCards(prev => prev.filter(c => !sacrificeCardIds.includes(c.id_card)).map(c => {
           if (c.id_card === targetCardForFeed.id_card) {
-            return { ...c, level: lastResult.newLevel, xp: lastResult.newXp };
+            return { ...c, level: data.newLevel, xp: data.newXp };
           }
           return c;
         }));
+
         setSelectedCards([]);
         setTargetCardForFeed(null);
-        showNotice(`✨ Feed concluído! A tua carta subiu de nível/XP com sucesso!`, 'success');
+        setMode('view');
+        showNotice(data.message, 'success');
+      } else {
+        showNotice(data.error || 'Erro ao processar o feed.', 'error');
       }
     })
-    .catch(() => showNotice('Erro ao processar o feed.', 'error'));
+    .catch(err => {
+      console.error(err);
+      showNotice('Erro de ligação ao servidor.', 'error');
+    });
   };
 
   if (loading) return <div style={{ color: '#fff', padding: '20px' }}>A abrir pergaminhos de inventário...</div>;
