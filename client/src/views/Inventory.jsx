@@ -91,13 +91,20 @@ export default function Inventory({ user }) {
   };
 
   // Processar Feed com as Cartas Selecionadas
-const handleConfirmFeed = () => {
+  const handleConfirmFeed = () => {
     if (!targetCardForFeed) {
       showNotice('Escolhe a carta principal que vai receber a experiência.', 'warning');
       return;
     }
 
-    // Obter apenas os IDs das cartas selecionadas que NÃO são a carta alvo
+    // Obter o ID do utilizador com segurança (suporta diferentes formatos de objeto user)
+    const userId = user?.id_user || user?.id;
+
+    if (!userId) {
+      showNotice('Erro: Utilizador não identificado. Inicia sessão novamente.', 'error');
+      return;
+    }
+
     const sacrificeCardIds = selectedCards.filter(id => id !== targetCardForFeed.id_card);
 
     if (sacrificeCardIds.length === 0) {
@@ -105,21 +112,18 @@ const handleConfirmFeed = () => {
       return;
     }
 
-    const userId = user.id_user || user.id;
-
     fetch('https://npcardgame.onrender.com/api/cards/feed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId,
+        userId, // <--- Aqui vai o ID correto do utilizador
         targetCardId: targetCardForFeed.id_card,
-        sacrificeCardIds // Envia o array inteiro de IDs
+        sacrificeCardIds
       })
     })
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        // Remove imediatamente as cartas sacrificadas do ecrã e atualiza o nível/XP da alvo
         setCards(prev => prev.filter(c => !sacrificeCardIds.includes(c.id_card)).map(c => {
           if (c.id_card === targetCardForFeed.id_card) {
             return { ...c, level: data.newLevel, xp: data.newXp };
