@@ -8,7 +8,8 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: true } // Necessário para bases de dados online modernas (Render, Supabase, Neon)
+  ssl: { rejectUnauthorized: true }, // Necessário para bases de dados online modernas (Render, Supabase, Neon)
+  family: 4 // Força IPv4 para evitar problemas de ligação em alguns ambientes
 });
 
 module.exports = {
