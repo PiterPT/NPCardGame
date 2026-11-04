@@ -116,12 +116,13 @@ export default function PvpArena({ user, setUser }) {
     <div style={{ padding: '20px', color: '#fff', maxWidth: '1000px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <h2 style={{ color: '#ff9900', textAlign: 'center', marginBottom: '20px' }}>⚔️ Arena PvP & Modo Infinito</h2>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px' }}>
-        <button onClick={() => setTab('ranking')} style={{ padding: '10px 20px', background: tab === 'ranking' ? '#ff9900' : '#222', color: tab === 'ranking' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🏆 Ranking & Top 5</button>
-        <button onClick={() => setTab('defense')} style={{ padding: '10px 20px', background: tab === 'defense' ? '#ff9900' : '#222', color: tab === 'defense' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🛡️ Equipa de Defesa (AFK)</button>
-        <button onClick={() => setTab('infinite')} style={{ padding: '10px 20px', background: tab === 'infinite' ? '#ff9900' : '#222', color: tab === 'infinite' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🌀 Modo Infinito (Farm)</button>
-      </div>
+
+{/* Exemplo corrigido das Tabs na PvpArena.jsx */}
+<div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px' }}>
+  <button type="button" onClick={() => setTab('ranking')} style={{ padding: '10px 20px', background: tab === 'ranking' ? '#ff9900' : '#222', color: tab === 'ranking' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🏆 Ranking & Top 5</button>
+  <button type="button" onClick={() => setTab('defense')} style={{ padding: '10px 20px', background: tab === 'defense' ? '#ff9900' : '#222', color: tab === 'defense' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🛡️ Equipa de Defesa (AFK)</button>
+  <button type="button" onClick={() => setTab('infinite')} style={{ padding: '10px 20px', background: tab === 'infinite' ? '#ff9900' : '#222', color: tab === 'infinite' ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🌀 Modo Infinito (Farm)</button>
+</div>
 
       {/* TAB 1: RANKING & TOP 5 */}
       {tab === 'ranking' && (
