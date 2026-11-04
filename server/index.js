@@ -15,12 +15,14 @@ const userRoutes = require('./routes/userRoutes');
 const gachaRoutes = require('./routes/gachaRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const cardRoutes = require('./routes/cardRoutes');
+const pvpRoutes = require('./routes/pvpRoutes');
 app.use(express.json());
 // Registar rotas (gachaRoutes fica livre do middleware restrito de admin)
 app.use('/api', authRoutes);
 app.use('/api', userRoutes);
 app.use('/api', gachaRoutes);
 app.use('/api/cards', cardRoutes);
+app.use('/api', pvpRoutes);
 app.use('/api', adminRoutes);
 
 const PORT = process.env.PORT || 3000;
