@@ -1,26 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db'); // Ajusta o caminho de acordo com a tua estrutura (ex: db.js ou pool)
+const pool = require('../index'); // Ajustado para apontar para o ficheiro principal onde está a pool (ex: index.js ou db.js)
 
 // ==========================================
 // FÓRMULAS DE CÁLCULO (BACKEND REGRAS)
 // ==========================================
 
-// Função para calcular os Ryos obtidos ao vender a carta
 function calculateSellRyos(card) {
   const rarityRyos = { E: 100, D: 250, C: 500, B: 1000, A: 2500, S: 5000, UR: 15000 };
   const baseRyos = rarityRyos[card.classe] || 100;
   const levelBonus = (card.level || 1) * 50;
-
   return baseRyos + levelBonus;
 }
 
-// Função para calcular o XP fornecido pela carta sacrificada
 function calculateFeedXp(sacrificedCard) {
   const rarityMultipliers = { E: 50, D: 100, C: 250, B: 500, A: 1000, S: 2000, UR: 5000 };
   const baseMultiplier = rarityMultipliers[sacrificedCard.classe] || 50;
   
-  // Soma dos status base da carta sacrificada
   const statusSum = (sacrificedCard.vida || 0) + (sacrificedCard.tai || 0) + (sacrificedCard.nin || 0);
   const levelBonus = (sacrificedCard.level || 1) * 100;
 
@@ -33,7 +29,7 @@ function calculateFeedXp(sacrificedCard) {
 
 /**
  * @route   POST /api/cards/sell
- * @desc    Vende uma carta do utilizador e adiciona Ryos à conta dele
+ * @desc    Vende uma carta do inventário do utilizador
  */
 router.post('/sell', async (req, res) => {
   const { userId, cardId } = req.body;
@@ -45,38 +41,42 @@ router.post('/sell', async (req, res) => {
   const client = await pool.connect();
 
   try {
-    // Iniciar Transação SQL para garantir segurança nos dados
     await client.query('BEGIN');
 
-    // 1. Validar se a carta pertence realmente a este utilizador
-    const cardRes = await client.query(
-      'SELECT * FROM cards WHERE id_card = $1 AND id_user = $2',
+    // 1. Validar se a carta pertence ao utilizador através da tabela inventario
+    const invCheck = await client.query(
+      `SELECT c.*, cm.classe FROM inventario i
+       JOIN cards c ON i.id_card = c.id_card
+       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+       WHERE i.id_card = $1 AND i.id_user = $2`,
       [cardId, userId]
     );
 
-    if (cardRes.rows.length === 0) {
+    if (invCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Carta não encontrada no teu inventário.' });
     }
 
-    const card = cardRes.rows[0];
+    const card = invCheck.rows[0];
     const ryosGanhos = calculateSellRyos(card);
 
-    // 2. Apagar a carta do inventário
+    // 2. Apagar o registo da tabela inventario (remover da posse do user)
+    await client.query('DELETE FROM inventario WHERE id_card = $1 AND id_user = $2', [cardId, userId]);
+
+    // 3. Apagar também da tabela cards se já não pertencer a mais ninguém (opcional, dependendo da tua lógica)
     await client.query('DELETE FROM cards WHERE id_card = $1', [cardId]);
 
-    // 3. Atualizar os Ryos do utilizador na tabela users
+    // 4. Adicionar as moedas (ryos/coins) ao utilizador
     await client.query(
-      'UPDATE users SET ryos = COALESCE(ryos, 0) + $1 WHERE id_user = $2',
+      'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2',
       [ryosGanhos, userId]
     );
 
-    // Confirmar Transação
     await client.query('COMMIT');
 
     return res.json({
       success: true,
-      message: `Carta ${card.name} vendida com sucesso por ${ryosGanhos} Ryos!`,
+      message: `Carta vendida com sucesso por ${ryosGanhos} Ryos!`,
       ryosGanhos
     });
   } catch (error) {
@@ -90,7 +90,7 @@ router.post('/sell', async (req, res) => {
 
 /**
  * @route   POST /api/cards/feed
- * @desc    Sacrifica uma carta para dar XP e subir o nível de outra carta
+ * @desc    Sacrifica cartas para dar XP a outra carta do inventário
  */
 router.post('/feed', async (req, res) => {
   const { userId, targetCardId, sacrificeCardIds } = req.body;
@@ -108,9 +108,12 @@ router.post('/feed', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Obter a carta alvo
+    // 1. Obter a carta alvo validando a tabela inventario
     const targetRes = await client.query(
-      'SELECT * FROM cards WHERE id_card = $1 AND id_user = $2',
+      `SELECT c.*, cm.classe FROM inventario i
+       JOIN cards c ON i.id_card = c.id_card
+       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+       WHERE i.id_card = $1 AND i.id_user = $2`,
       [targetCardId, userId]
     );
 
@@ -121,9 +124,12 @@ router.post('/feed', async (req, res) => {
 
     const targetCard = targetRes.rows[0];
 
-    // 2. Obter todas as cartas de sacrifício de uma vez
+    // 2. Obter as cartas de sacrifício
     const sacrificesRes = await client.query(
-      'SELECT * FROM cards WHERE id_card = ANY($1::int[]) AND id_user = $2',
+      `SELECT c.*, cm.classe FROM inventario i
+       JOIN cards c ON i.id_card = c.id_card
+       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+       WHERE i.id_card = ANY($1::int[]) AND i.id_user = $2`,
       [sacrificeCardIds, userId]
     );
 
@@ -132,18 +138,18 @@ router.post('/feed', async (req, res) => {
       return res.status(404).json({ error: 'Nenhuma carta de sacrifício válida encontrada.' });
     }
 
-    // 3. Calcular o XP total somando todas as cartas sacrificadas
+    // 3. Calcular XP total ganho
     let totalXpGanha = 0;
     for (const sacrificeCard of sacrificesRes.rows) {
       const rarityMultipliers = { E: 50, D: 100, C: 250, B: 500, A: 1000, S: 2000, UR: 5000 };
       const baseMultiplier = rarityMultipliers[sacrificeCard.classe] || 50;
-      const statusSum = (sacrificeCard.vida || 0) + (sacrificeCard.tai || 0) + (sacrificeCard.nin || 0);
+      const statusSum = (sacrificeCard.vidastatus || 0) + (sacrificeCard.taistatus || 0) + (sacrificeCard.chakrastatus || 0);
       const levelBonus = (sacrificeCard.level || 1) * 100;
       
       totalXpGanha += baseMultiplier + Math.floor(statusSum * 0.5) + levelBonus;
     }
 
-    // 4. Calcular o novo Nível e XP da carta alvo
+    // 4. Calcular Nível e XP com barra acumulada e resto
     let currentLevel = targetCard.level || 1;
     let currentXp = (targetCard.xp || 0) + totalXpGanha;
     let xpNeeded = currentLevel * 1000;
@@ -154,13 +160,17 @@ router.post('/feed', async (req, res) => {
       xpNeeded = currentLevel * 1000;
     }
 
-    // 5. Apagar TODAS as cartas sacrificadas da base de dados de uma vez
+    // 5. Remover as cartas sacrificadas do inventário e da tabela cards
     await client.query(
-      'DELETE FROM cards WHERE id_card = ANY($1::int[]) AND id_user = $2',
+      'DELETE FROM inventario WHERE id_card = ANY($1::int[]) AND id_user = $2',
       [sacrificeCardIds, userId]
     );
+    await client.query(
+      'DELETE FROM cards WHERE id_card = ANY($1::int[])',
+      [sacrificeCardIds]
+    );
 
-    // 6. Atualizar a carta alvo com o novo nível e XP
+    // 6. Atualizar a carta alvo com o novo nível e o XP restante
     await client.query(
       'UPDATE cards SET level = $1, xp = $2 WHERE id_card = $3',
       [currentLevel, currentXp, targetCardId]

@@ -39,6 +39,8 @@ router.get('/user/:id/profile', async (req, res) => {
               c.vidastatus as vida, 
               c.taistatus as tai, 
               c.chakrastatus as nin, 
+              c.level,
+              c.xp,
               cm.image_url, 
               cm.classe 
        FROM inventario i
