@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Inventory from './views/Inventory';
+import PvpArena from './views/PvpArena'; // 👈 Novo componente importado
 import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
 import './styles/global.css';
@@ -13,6 +14,14 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState('dashboard');
+
+  const handleUpdateUser = (updatedData) => {
+    setUser(prev => {
+      const newUser = { ...prev, ...updatedData };
+      localStorage.setItem('user', JSON.stringify(newUser));
+      return newUser;
+    });
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -45,6 +54,9 @@ export default function App() {
         <button onClick={() => setCurrentView('gacha')} style={{ background: currentView === 'gacha' ? '#ff9900' : 'transparent', color: currentView === 'gacha' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
           🔮 Portal Gacha
         </button>
+        <button onClick={() => setCurrentView('pvp')} style={{ background: currentView === 'pvp' ? '#ff9900' : 'transparent', color: currentView === 'pvp' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+          ⚔️ Arena PvP & Infinito
+        </button>
 
         {user.role === 'admin' && (
           <>
@@ -76,8 +88,9 @@ export default function App() {
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {currentView === 'dashboard' && <Dashboard user={user} setCurrentView={setCurrentView} />}
-          {currentView === 'inventory' && <Inventory user={user} />}
-          {currentView === 'gacha' && <Gacha user={user} setUser={setUser} />}
+          {currentView === 'inventory' && <Inventory user={user} setUser={handleUpdateUser} />}
+          {currentView === 'gacha' && <Gacha user={user} setUser={handleUpdateUser} />}
+          {currentView === 'pvp' && <PvpArena user={user} setUser={handleUpdateUser} />}
           {currentView === 'admin' && user.role === 'admin' && <AdminPanel />}
         </div>
       </main>
