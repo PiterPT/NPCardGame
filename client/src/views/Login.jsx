@@ -14,7 +14,7 @@ export default function Login({ onLoginSuccess }) {
     setError('');
     setLoading(true); // 👈 Desativa o botão e mostra estado a processar
 
-    const endpoint = isRegister ? 'http://localhost:3000/api/auth/register' : 'http://localhost:3000/api/auth/login';
+    const endpoint = isRegister ? 'https://npcardgame.onrender.com:3000/api/auth/register' : 'https://npcardgame.onrender.com:3000/api/auth/login';
     const bodyData = isRegister ? { name, email, password } : { email, password };
 
     try {
