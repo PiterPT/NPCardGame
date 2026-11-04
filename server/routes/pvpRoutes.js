@@ -12,7 +12,7 @@ router.post('/pvp/defense', async (req, res) => {
   const { userId, cardIds } = req.body;
   
   if (!userId || !cardIds || !Array.isArray(cardIds)) {
-    return res.status(400).json({ error: 'Dados inválidos ou incompletos.' });
+    return res.status(400).json({ error: 'Dados inválidos (userId ou cardIds ausentes).' });
   }
 
   if (cardIds.length > 5) {
@@ -23,10 +23,19 @@ router.post('/pvp/defense', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Remove a defesa anterior do utilizador
+    // Assegura que a tabela existe antes de operar
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pvp_defense (
+        id_defense SERIAL PRIMARY KEY,
+        id_user INT NOT NULL,
+        id_card INT NOT NULL
+      )
+    `);
+
+    // Remove a defesa anterior do utilizador
     await client.query('DELETE FROM pvp_defense WHERE id_user = $1', [userId]);
 
-    // 2. Insere as novas cartas de defesa (garantindo conversão para inteiro)
+    // Insere as novas cartas de defesa
     for (const cardId of cardIds) {
       await client.query(
         'INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)',
@@ -37,12 +46,12 @@ router.post('/pvp/defense', async (req, res) => {
     await client.query('COMMIT');
     client.release();
     
-    return res.json({ success: true, message: 'Equipa de defesa atualizada com sucesso!' });
+    return res.json({ success: true, message: 'Equipa de defesa guardada com sucesso!' });
   } catch (err) {
     await client.query('ROLLBACK');
     client.release();
     console.error('Erro detalhado ao guardar defesa:', err);
-    return res.status(500).json({ error: 'Erro interno ao guardar equipa de defesa na base de dados.' });
+    return res.status(500).json({ error: err.message || 'Erro interno ao guardar equipa de defesa.' });
   }
 });
 // Obter equipa de defesa e ranking do utilizador

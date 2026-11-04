@@ -64,23 +64,39 @@ export default function PvpArena({ user, setUser }) {
       })
       .catch(err => console.error(err));
   };
-  const handleSaveDefense = () => {
+const handleSaveDefense = async () => {
+    if (selectedDefense.length === 0) {
+      alert('Seleciona pelo menos uma carta para a tua defesa!');
+      return;
+    }
+
     if (selectedDefense.length > 5) {
       alert('Máximo de 5 cartas na equipa de defesa!');
       return;
     }
 
-    fetch(`${API_URL}/api/pvp/defense`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, cardIds: selectedDefense })
-    })
-      .then(res => res.json())
-      .then(data => {
-        alert(data.message || 'Defesa guardada!');
-        fetchInventoryAndDefense();
-      })
-      .catch(err => alert('Erro ao guardar defesa.'));
+    // Garante que só envia IDs numéricos válidos
+    const cleanCardIds = selectedDefense.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+
+    try {
+      const res = await fetch(`${API_URL}/api/pvp/defense`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: parseInt(userId, 10), cardIds: cleanCardIds })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao processar defesa no servidor.');
+      }
+
+      alert(data.message || 'Equipa de defesa guardada com sucesso!');
+      fetchInventoryAndDefense();
+    } catch (err) {
+      console.error('Erro ao guardar defesa:', err);
+      alert(`Falha ao guardar: ${err.message}`);
+    }
   };
 
   const handleChallenge = (opponent) => {
