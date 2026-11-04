@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../index'); // Ajustado para apontar para o ficheiro principal onde está a pool
+const pool = require('../index'); // Pool do PostgreSQL
 
 // ==========================================
-// FÓRMULAS DE CÁLCULO (BACKEND REGRAS)
+// FÓRMULAS DE CÁLCULO
 // ==========================================
 
 function calculateSellRyos(card) {
@@ -17,20 +17,18 @@ function calculateFeedXp(sacrificeCard) {
   const rarityMultipliers = { E: 50, D: 100, C: 250, B: 500, A: 1000, S: 2000, UR: 5000 };
   const baseMultiplier = rarityMultipliers[sacrificeCard.classe] || 50;
   
-  const statusSum = (sacrificeCard.vidastatus || 0) + (sacrificeCard.taistatus || 0) + (sacrificeCard.chakrastatus || 0);
+  const statusSum = (sacrificeCard.vidastatus || sacrificeCard.vida || 0) + 
+                    (sacrificeCard.taistatus || sacrificeCard.tai || 0) + 
+                    (sacrificeCard.chakrastatus || sacrificeCard.nin || 0);
   const levelBonus = (sacrificeCard.level || 1) * 100;
 
   return baseMultiplier + Math.floor(statusSum * 0.5) + levelBonus;
 }
 
 // ==========================================
-// ROTAS DE SIMULAÇÃO (PREVIEW)
+// ROTAS DE PREVIEW
 // ==========================================
 
-/**
- * @route   POST /api/cards/preview-sell
- * @desc    Calcula o dinheiro gerado pelas cartas selecionadas para venda
- */
 router.post('/preview-sell', async (req, res) => {
   const { userId, cardIds } = req.body;
   if (!userId || !cardIds || cardIds.length === 0) {
@@ -58,10 +56,6 @@ router.post('/preview-sell', async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/cards/preview-feed
- * @desc    Simula o XP ganho, novo nível e XP resultante para a carta alvo
- */
 router.post('/preview-feed', async (req, res) => {
   const { userId, targetCardId, sacrificeCardIds } = req.body;
   if (!userId || !targetCardId || !sacrificeCardIds || sacrificeCardIds.length === 0) {
@@ -69,7 +63,6 @@ router.post('/preview-feed', async (req, res) => {
   }
 
   try {
-    // 1. Buscar carta alvo
     const targetRes = await pool.query(
       `SELECT c.*, cm.classe FROM inventario i
        JOIN cards c ON i.id_card = c.id_card
@@ -83,7 +76,6 @@ router.post('/preview-feed', async (req, res) => {
     }
     const targetCard = targetRes.rows[0];
 
-    // 2. Buscar cartas de sacrifício
     const sacrificesRes = await pool.query(
       `SELECT c.*, cm.classe FROM inventario i
        JOIN cards c ON i.id_card = c.id_card
@@ -97,7 +89,6 @@ router.post('/preview-feed', async (req, res) => {
       totalXpGanha += calculateFeedXp(sacrificeCard);
     });
 
-    // 3. Simular progressão
     let currentLevel = targetCard.level || 1;
     let currentXp = (targetCard.xp || 0) + totalXpGanha;
     let xpNeeded = currentLevel * 1000;
@@ -124,10 +115,6 @@ router.post('/preview-feed', async (req, res) => {
 // ROTAS DE AÇÃO (SELL & FEED)
 // ==========================================
 
-/**
- * @route   POST /api/cards/sell
- * @desc    Vende uma carta do inventário do utilizador
- */
 router.post('/sell', async (req, res) => {
   const { userId, cardId } = req.body;
 
@@ -179,10 +166,6 @@ router.post('/sell', async (req, res) => {
   }
 });
 
-/**
- * @route   POST /api/cards/feed
- * @desc    Sacrifica cartas para dar XP a outra carta do inventário
- */
 router.post('/feed', async (req, res) => {
   const { userId, targetCardId, sacrificeCardIds } = req.body;
 
@@ -242,6 +225,7 @@ router.post('/feed', async (req, res) => {
       xpNeeded = currentLevel * 1000;
     }
 
+    // CORREÇÃO CRÍTICA: Removido alias incorreto "i." na instrução DELETE
     await client.query(
       'DELETE FROM inventario WHERE id_card = ANY($1::int[]) AND id_user = $2',
       [sacrificeCardIds, userId]

@@ -8,7 +8,7 @@ export default function Inventory({ user }) {
   const [targetCardForFeed, setTargetCardForFeed] = useState(null);
   const [notification, setNotification] = useState(null);
 
-  // Estados para Preview em tempo real
+  // Previsões em tempo real
   const [sellPreview, setSellPreview] = useState(0);
   const [feedPreview, setFeedPreview] = useState(null);
 
@@ -17,17 +17,17 @@ export default function Inventory({ user }) {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // 🔹 Função segura para obter o ID do utilizador (evita falhas de identificação)
+  // Obtenção segura e normalizada do ID do utilizador
   const getUserId = () => {
     if (!user) return null;
-    return user.id_user || user.id || user.userId || null;
+    return user.id_user || user.id || null;
   };
 
   useEffect(() => {
     const userId = getUserId();
     if (!userId) {
       setLoading(false);
-      showNotice('Acesso negado. Sem identificação do utilizador.', 'error');
+      showNotice('Acesso negado. Sem identificação.', 'error');
       return;
     }
 
@@ -47,7 +47,7 @@ export default function Inventory({ user }) {
       });
   }, [user]);
 
-  // Atualizar Preview com validação rigorosa do userId
+  // Atualização dinâmica das previsões (Preview)
   useEffect(() => {
     const userId = getUserId();
     if (!userId) return;
@@ -89,7 +89,7 @@ export default function Inventory({ user }) {
     setCards(prev => prev.map(c => {
       if (c.id_card === cardId) {
         const newStatus = !c.is_locked;
-        showNotice(newStatus ? '📌 Carta trancada com sucesso!' : '🔓 Carta destrancada.', newStatus ? 'warning' : 'info');
+        showNotice(newStatus ? '📌 Carta trancada!' : '🔓 Carta destrancada.', newStatus ? 'warning' : 'info');
         return { ...c, is_locked: newStatus };
       }
       return c;
