@@ -232,14 +232,16 @@ export default function Inventory({ user }) {
         </button>
 
         {/* Botão e Preview Vender */}
-        {mode === 'sell' && selectedCards.length > 0 && (
+        {mode === 'sell' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
             <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Valor total: 💰 {sellPreview} Ryos</span>
-            <button 
-              onClick={handleConfirmSell}
-              style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-              Confirmar Venda ({selectedCards.length})
-            </button>
+            {selectedCards.length > 0 && (
+              <button 
+                onClick={handleConfirmSell}
+                style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Confirmar Venda ({selectedCards.length})
+              </button>
+            )}
           </div>
         )}
 
@@ -261,14 +263,14 @@ export default function Inventory({ user }) {
               <span>Carta Alvo: <strong style={{ color: '#ff9900' }}>{targetCardForFeed.name} (Nvl {targetCardForFeed.level || 1})</strong>. </span>
               {feedPreview ? (
                 <div style={{ marginTop: '6px', color: '#68d391', fontWeight: 'bold' }}>
-                  ✨ XP Ganho: +{feedPreview.totalXpGanha} | 📈 Nível Previsto: Nvl {feedPreview.previewLevel} ({feedPreview.previewXp} / {feedPreview.xpNeeded} XP)
+                  ✨ XP Ganho: +{feedPreview.totalXpGanha || 0} | 📈 Nível Previsto: Nvl {feedPreview.previewLevel || 1} ({feedPreview.previewXp || 0} / {feedPreview.xpNeeded || 1000} XP)
                 </div>
               ) : (
-                <span style={{ color: '#cbd5e0' }}>Seleciona as cartas para sacrificar em baixo para ver a previsão de nível.</span>
+                <span style={{ color: '#cbd5e0', display: 'block', marginTop: '4px' }}>Seleciona as cartas para sacrificar em baixo para ver a previsão de nível.</span>
               )}
             </div>
           ) : (
-            <span>Modo Feed: Clica na carta principal do teu inventário que queres **subir de nível**.</span>
+            <span style={{ color: '#ff9900', fontWeight: 'bold' }}>Modo Feed: Clica na carta principal do teu inventário que queres **subir de nível**.</span>
           )}
         </div>
       )}
