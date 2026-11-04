@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ninja Legends: Shinobi Chronicles</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        .animate-pulse-glow {
+            animation: pulseGlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-cyan-500 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const RARITIES = {
+            COMMON: { name: 'Comum', color: 'border-slate-500 text-slate-400 bg-slate-900/80', dropRate: 50 },
+            UNCOMMON: { name: 'Incomum', color: 'border-emerald-500 text-emerald-400 bg-emerald-950/40', dropRate: 30 },
+            RARE: { name: 'Raro', color: 'border-blue-500 text-blue-400 bg-blue-950/40', dropRate: 12 },
+            EPIC: { name: 'Épico', color: 'border-purple-500 text-purple-400 bg-purple-950/40', dropRate: 6 },
+            LEGENDARY: { name: 'Lendário', color: 'border-amber-500 text-amber-400 bg-amber-950/40', dropRate: 1.8 },
+            MYTHICAL: { name: 'Mítico', color: 'border-rose-500 text-rose-400 bg-rose-950/40', dropRate: 0.2 }
+        };
+
+        const INITIAL_CARDS = [
+            { id: '1', name: 'Naruto Uzumaki', rarity: 'LEGENDARY', hp: 1200, chakra: 500, taijutsu: 85, ninjutsu: 95, genjutsu: 30, speed: 88, def: 80, grades: { taijutsu: 'A', ninjutsu: 'S', genjutsu: 'D', speed: 'A', def: 'B' }, avatar: '🌀' },
+            { id: '2', name: 'Sasuke Uchiha', rarity: 'LEGENDARY', hp: 1150, chakra: 480, taijutsu: 88, ninjutsu: 92, genjutsu: 90, speed: 94, def: 75, grades: { taijutsu: 'A', ninjutsu: 'S', genjutsu: 'S', speed: 'S', def: 'C' }, avatar: '⚡' },
+            { id: '3', name: 'Sakura Haruno', rarity: 'EPIC', hp: 1000, chakra: 400, taijutsu: 90, ninjutsu: 70, genjutsu: 60, speed: 75, def: 85, grades: { taijutsu: 'S', ninjutsu: 'B', genjutsu: 'C', speed: 'B', def: 'A' }, avatar: '🌸' },
+            { id: '4', name: 'Kakashi Hatake', rarity: 'MYTHICAL', hp: 1300, chakra: 520, taijutsu: 92, ninjutsu: 96, genjutsu: 85, speed: 90, def: 88, grades: { taijutsu: 'S', ninjutsu: 'S', genjutsu: 'A', speed: 'A', def: 'A' }, avatar: '👁️' },
+            { id: '5', name: 'Rock Lee', rarity: 'RARE', hp: 950, chakra: 100, taijutsu: 98, ninjutsu: 0, genjutsu: 0, speed: 96, def: 70, grades: { taijutsu: 'S', ninjutsu: 'D', genjutsu: 'D', speed: 'S', def: 'C' }, avatar: '🥊' },
+            { id: '6', name: 'Gaara', rarity: 'EPIC', hp: 1250, chakra: 450, taijutsu: 60, ninjutsu: 90, genjutsu: 40, speed: 65, def: 98, grades: { taijutsu: 'C', ninjutsu: 'A', genjutsu: 'D', speed: 'C', def: 'S' }, avatar: '⏳' },
+            { id: '7', name: 'Gennin de Konoha', rarity: 'COMMON', hp: 600, chakra: 200, taijutsu: 40, ninjutsu: 35, genjutsu: 20, speed: 45, def: 40, grades: { taijutsu: 'D', ninjutsu: 'D', genjutsu: 'D', speed: 'D', def: 'D' }, avatar: '🍃' },
+            { id: '8', name: 'Chunin Rebelde', rarity: 'UNCOMMON', hp: 750, chakra: 280, taijutsu: 55, ninjutsu: 50, genjutsu: 35, speed: 58, def: 52, grades: { taijutsu: 'C', ninjutsu: 'C', genjutsu: 'D', speed: 'C', def: 'C' }, avatar: '🗡️' }
+        ];
+
+        function App() {
+            const [user, setUser] = useState({ name: 'Shinobi', level: 5, exp: 120, coins: 2500 });
+            const [inventory, setInventory] = useState([
+                { ...INITIAL_CARDS[0], level: 1, count: 1 },
+                { ...INITIAL_CARDS[6], level: 1, count: 3 },
+                { ...INITIAL_CARDS[7], level: 1, count: 2 }
+            ]);
+            const [team, setTeam] = useState([INITIAL_CARDS[0]]);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [gachaResult, setGachaResult] = useState(null);
+            const [battle, setBattle] = useState(null);
+
+            const pullGacha = (times = 1) => {
+                const cost = times === 1 ? 200 : 1800;
+                if (user.coins < cost) {
+                    alert('Ryo/Coins insuficientes!');
+                    return;
+                }
+
+                setUser(prev => ({ ...prev, coins: prev.coins - cost }));
+                let pulled = [];
+
+                for (let i = 0; i < times; i++) {
+                    const rand = Math.random() * 100;
+                    let cum = 0;
+                    let selectedRarity = 'COMMON';
+
+                    for (const [rKey, rVal] of Object.entries(RARITIES)) {
+                        cum += rVal.dropRate;
+                        if (rand <= cum) {
+                            selectedRarity = rKey;
+                            break;
+                        }
+                    }
+
+                    const pool = INITIAL_CARDS.filter(c => c.rarity === selectedRarity);
+                    const chosen = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : INITIAL_CARDS[6];
+                    pulled.push(chosen);
+                }
+
+                setInventory(prev => {
+                    let nextInv = [...prev];
+                    pulled.forEach(card => {
+                        const idx = nextInv.findIndex(i => i.id === card.id);
+                        if (idx >= 0) {
+                            nextInv[idx].count += 1;
+                        } else {
+                            nextInv.push({ ...card, level: 1, count: 1 });
+                        }
+                    });
+                    return nextInv;
+                });
+
+                setGachaResult(pulled);
+            };
+
+            const startBattle = () => {
+                const enemy = INITIAL_CARDS[Math.floor(Math.random() * INITIAL_CARDS.length)];
+                const playerCard = team[0] || inventory[0];
+
+                setBattle({
+                    playerHp: playerCard.hp,
+                    playerMaxHp: playerCard.hp,
+                    playerChakra: playerCard.chakra,
+                    enemyHp: enemy.hp,
+                    enemyMaxHp: enemy.hp,
+                    enemyCard: enemy,
+                    playerCard: playerCard,
+                    logs: ['Batalha iniciada contra ' + enemy.name + '!'],
+                    turn: 'player',
+                    finished: false
+                });
+                setActiveTab('combat');
+            };
+
+            const handleAttack = (type = 'taijutsu') => {
+                if (!battle || battle.finished || battle.turn !== 'player') return;
+
+                const p = battle.playerCard;
+                const e = battle.enemyCard;
+                let damage = 0;
+                let logMsg = '';
+
+                if (type === 'taijutsu') {
+                    damage = Math.max(10, p.taijutsu * 2 - e.def);
+                    logMsg = `${p.name} usou Taijutsu causando ${damage} de dano!`;
+                } else if (type === 'ninjutsu') {
+                    if (battle.playerChakra < 50) {
+                        alert('Chakra insuficiente!');
+                        return;
+                    }
+                    damage = Math.max(20, p.ninjutsu * 3 - e.def);
+                    logMsg = `${p.name} usou Ninjutsu Devastador causando ${damage} de dano!`;
+                }
+
+                const newEnemyHp = Math.max(0, battle.enemyHp - damage);
+                const newChakra = type === 'ninjutsu' ? battle.playerChakra - 50 : battle.playerChakra;
+
+                if (newEnemyHp === 0) {
+                    const coinReward = 300;
+                    setUser(prev => ({ ...prev, coins: prev.coins + coinReward, exp: prev.exp + 50 }));
+                    setBattle(prev => ({
+                        ...prev,
+                        enemyHp: 0,
+                        playerChakra: newChakra,
+                        logs: [logMsg, `Vitória! Ganhaste ${coinReward} Ryo e 50 EXP!`, ...prev.logs],
+                        finished: true
+                    }));
+                    return;
+                }
+
+                const enemyDamage = Math.max(5, e.taijutsu * 1.5 - p.def);
+                const newPlayerHp = Math.max(0, battle.playerHp - enemyDamage);
+
+                if (newPlayerHp === 0) {
+                    setBattle(prev => ({
+                        ...prev,
+                        playerHp: 0,
+                        enemyHp: newEnemyHp,
+                        playerChakra: newChakra,
+                        logs: [logMsg, `${e.name} contra-atacou e causou ${enemyDamage} de dano!`, `Foste derrotado!`, ...prev.logs],
+                        finished: true
+                    }));
+                } else {
+                    setBattle(prev => ({
+                        ...prev,
+                        playerHp: newPlayerHp,
+                        enemyHp: newEnemyHp,
+                        playerChakra: newChakra,
+                        logs: [`${e.name} contra-atacou causando ${enemyDamage} de dano!`, logMsg, ...prev.logs]
+                    }));
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-100">
+                    <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center space-x-3 mb-8">
+                                <span className="text-3xl">🌀</span>
+                                <div>
+                                    <h1 className="font-bold text-lg text-cyan-400">Ninja Legends</h1>
+                                    <p className="text-xs text-slate-400">Shinobi Chronicles</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 mb-6">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-semibold text-slate-200">{user.name}</span>
+                                    <span className="text-xs bg-cyan-950 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-md font-bold">Nível {user.level}</span>
+                                </div>
+                                <div className="text-xs text-amber-400 font-bold mb-2">💰 {user.coins} Ryo</div>
+                                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-cyan-500 h-full" style={{ width: `${(user.exp / 200) * 100}%` }}></div>
+                                </div>
+                            </div>
+
+                            <nav className="space-y-2">
+                                {[
+                                    { id: 'dashboard', label: 'Painel Principal', icon: '🏠' },
+                                    { id: 'inventory', label: 'Coleção de Cartas', icon: '🃏' },
+                                    { id: 'gacha', label: 'Invocações (Gacha)', icon: '🔮' },
+                                    { id: 'combat', label: 'Arena de Combate', icon: '⚔️' }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                                            activeTab === tab.id 
+                                                ? 'bg-cyan-500/10 border border-cyan-500/40 text-cyan-400 shadow-lg' 
+                                                : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                                        }`}>
+                                        <span className="text-lg">{tab.icon}</span>
+                                        <span>{tab.label}</span>
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+
+                        <div className="text-center text-xs text-slate-500 pt-4 border-t border-slate-800">
+                            Versão 1.0.0 • Multiplayer Ready
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 p-6 overflow-y-auto">
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-r from-cyan-950/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 rounded-2xl">
+                                    <h2 className="text-2xl font-bold text-slate-100 mb-2">Bem-vindo à Vila dos Shinobis!</h2>
+                                    <p className="text-slate-400 text-sm max-w-xl mb-4">
+                                        Coleciona cartas ninjas, melhora os teus atributos e combate arenas em tempo real.
+                                    </p>
+                                    <button 
+                                        onClick={startBattle}
+                                        className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-105">
+                                        ⚔️ Iniciar Batalha Rápida
+                                    </button>
+                                </div>
+
+                                <h3 className="text-lg font-bold text-slate-200">Equipa Atual em Combate</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {team.map(card => (
+                                        <div key={card.id} className={`p-4 rounded-xl border ${RARITIES[card.rarity].color} relative`}>
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className="text-4xl">{card.avatar}</span>
+                                                <span className="text-xs px-2 py-1 rounded font-bold bg-slate-950/80 border border-slate-700">
+                                                    {RARITIES[card.rarity].name}
+                                                </span>
+                                            </div>
+                                            <h4 className="font-bold text-slate-100">{card.name}</h4>
+                                            <div className="mt-2 text-xs space-y-1 text-slate-300">
+                                                <div className="flex justify-between"><span>Vida (HP):</span> <span>{card.hp}</span></div>
+                                                <div className="flex justify-between"><span>Taijutsu:</span> <span className="font-bold text-cyan-400">{card.taijutsu} (Grau {card.grades.taijutsu})</span></div>
+                                                <div className="flex justify-between"><span>Ninjutsu:</span> <span className="font-bold text-blue-400">{card.ninjutsu} (Grau {card.grades.ninjutsu})</span></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'inventory' && (
+                            <div className="space-y-6">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-xl font-bold text-slate-100">Coleção de Cartas</h2>
+                                    <span className="text-xs text-slate-400">Total: {inventory.reduce((a,b) => a + b.count, 0)}</span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {inventory.map((card, i) => (
+                                        <div key={i} className={`p-4 rounded-xl border ${RARITIES[card.rarity].color} relative flex flex-col justify-between`}>
+                                            {card.count > 1 && (
+                                                <span className="absolute top-2 right-2 bg-amber-500 text-slate-950 font-bold text-xs px-2 py-0.5 rounded-full">
+                                                    x{card.count}
+                                                </span>
+                                            )}
+                                            <div>
+                                                <div className="text-5xl mb-3 text-center">{card.avatar}</div>
+                                                <h4 className="font-bold text-slate-100 text-center">{card.name}</h4>
+                                                <p className="text-xs text-center text-slate-400 mb-3">{RARITIES[card.rarity].name}</p>
+                                                
+                                                <div className="space-y-1 text-xs text-slate-300 bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                                                    <div className="flex justify-between"><span>Nível:</span> <span className="text-cyan-400 font-bold">{card.level}</span></div>
+                                                    <div className="flex justify-between"><span>HP:</span> <span>{card.hp}</span></div>
+                                                    <div className="flex justify-between"><span>Taijutsu:</span> <span>{card.taijutsu}</span></div>
+                                                    <div className="flex justify-between"><span>Ninjutsu:</span> <span>{card.ninjutsu}</span></div>
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => setTeam([card])}
+                                                className="mt-3 w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-lg border border-slate-700 transition">
+                                                Colocar na Equipa
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'gacha' && (
+                            <div className="space-y-6 text-center max-w-2xl mx-auto">
+                                <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl relative overflow-hidden">
+                                    <div className="text-6xl mb-4 animate-bounce">🔮</div>
+                                    <h2 className="text-2xl font-bold text-cyan-400 mb-2">Portal de Invocação Ninja</h2>
+                                    <p className="text-xs text-slate-400 mb-6">Invoque shinobis lendários para fortalecer a sua equipa!</p>
+
+                                    <div className="flex justify-center space-x-4">
+                                        <button 
+                                            onClick={() => pullGacha(1)}
+                                            className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg">
+                                            Invocação x1 (200 Ryo)
+                                        </button>
+                                        <button 
+                                            onClick={() => pullGacha(10)}
+                                            className="px-6 py-3 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold rounded-xl shadow-lg">
+                                            Invocação x10 (1800 Ryo)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {gachaResult && (
+                                    <div className="bg-slate-900/90 border border-cyan-500/30 p-6 rounded-2xl">
+                                        <h3 className="font-bold text-cyan-400 mb-4">Cartas Invocadas!</h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                            {gachaResult.map((card, i) => (
+                                                <div key={i} className={`p-3 rounded-xl border ${RARITIES[card.rarity].color} text-center`}>
+                                                    <div className="text-3xl mb-1">{card.avatar}</div>
+                                                    <div className="font-bold text-xs truncate">{card.name}</div>
+                                                    <div className="text-[10px] text-slate-400">{RARITIES[card.rarity].name}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'combat' && (
+                            <div>
+                                {!battle ? (
+                                    <div className="text-center py-12">
+                                        <p className="text-slate-400 mb-4">Nenhuma batalha em curso.</p>
+                                        <button 
+                                            onClick={startBattle}
+                                            className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl">
+                                            Procurar Adversário
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6 max-w-3xl mx-auto">
+                                        <div className="grid grid-cols-2 gap-6 bg-slate-900 border border-slate-800 p-6 rounded-2xl relative">
+                                            <div className="text-center space-y-2">
+                                                <span className="text-xs bg-cyan-950 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded">Tu</span>
+                                                <div className="text-6xl my-2">{battle.playerCard.avatar}</div>
+                                                <h4 className="font-bold text-slate-100">{battle.playerCard.name}</h4>
+                                                <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                                                    <div className="bg-emerald-500 h-full transition-all" style={{ width: `${(battle.playerHp / battle.playerMaxHp) * 100}%` }}></div>
+                                                </div>
+                                                <div className="text-xs text-slate-400">HP: {battle.playerHp} / {battle.playerMaxHp}</div>
+                                            </div>
+
+                                            <div className="text-center space-y-2">
+                                                <span className="text-xs bg-rose-950 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded">Adversário</span>
+                                                <div className="text-6xl my-2">{battle.enemyCard.avatar}</div>
+                                                <h4 className="font-bold text-slate-100">{battle.enemyCard.name}</h4>
+                                                <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
+                                                    <div className="bg-rose-500 h-full transition-all" style={{ width: `${(battle.enemyHp / battle.enemyMaxHp) * 100}%` }}></div>
+                                                </div>
+                                                <div className="text-xs text-slate-400">HP: {battle.enemyHp} / {battle.enemyMaxHp}</div>
+                                            </div>
+                                        </div>
+
+                                        {!battle.finished && (
+                                            <div className="flex justify-center space-x-4">
+                                                <button 
+                                                    onClick={() => handleAttack('taijutsu')}
+                                                    className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-lg">
+                                                    👊 Taijutsu
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleAttack('ninjutsu')}
+                                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg">
+                                                    🔥 Ninjutsu (-50 Chakra)
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl h-36 overflow-y-auto space-y-1 text-xs font-mono">
+                                            {battle.logs.map((log, index) => (
+                                                <div key={index} className="text-slate-300">{log}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
