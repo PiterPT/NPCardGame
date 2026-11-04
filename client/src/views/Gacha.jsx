@@ -70,7 +70,7 @@ const handlePull = async (times) => {
   setPulledCards(null);
 
   try {
-    const response = await fetch('https://npcardgame.onrender.com:3000/api/gacha/pull', {
+    const response = await fetch('https://npcardgame.onrender.com/api/gacha/pull', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',

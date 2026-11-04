@@ -8,7 +8,7 @@ export default function Inventory({ user }) {
     if (!user) return;
     const userId = user.id_user || user.id;
 
-    fetch(`https://npcardgame.onrender.com:3000/api/user/${userId}/profile`)
+    fetch(`https://npcardgame.onrender.com/api/user/${userId}/profile`)
       .then((res) => res.json())
       .then((data) => {
         if (data.cards) {

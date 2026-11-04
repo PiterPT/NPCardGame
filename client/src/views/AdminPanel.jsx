@@ -38,7 +38,7 @@ export default function AdminPanel() {
 
   const fetchUsers = () => {
     setLoadingData(true);
-    fetch('https://npcardgame.onrender.com:3000/api/admin/users', { headers: getHeaders() })
+    fetch('https://npcardgame.onrender.com/api/admin/users', { headers: getHeaders() })
       .then(res => res.json())
       .then(data => Array.isArray(data) && setUsers(data))
       .catch(() => setErrorMsg('Erro ao carregar utilizadores.'))
@@ -47,7 +47,7 @@ export default function AdminPanel() {
 
   const fetchCards = () => {
     setLoadingData(true);
-    fetch('https://npcardgame.onrender.com:3000/api/admin/cards', { headers: getHeaders() })
+    fetch('https://npcardgame.onrender.com/api/admin/cards', { headers: getHeaders() })
       .then(res => res.json())
       .then(data => Array.isArray(data) && setCards(data))
       .catch(() => setErrorMsg('Erro ao carregar cartas.'))
@@ -71,8 +71,8 @@ export default function AdminPanel() {
 
     const method = cardForm.id_modelcard ? 'PUT' : 'POST';
     const url = cardForm.id_modelcard 
-      ? `https://npcardgame.onrender.com:3000/api/admin/cards/${cardForm.id_modelcard}` 
-      : 'https://npcardgame.onrender.com:3000/api/admin/cards';
+      ? `https://npcardgame.onrender.com/api/admin/cards/${cardForm.id_modelcard}` 
+      : 'https://npcardgame.onrender.com/api/admin/cards';
 
     fetch(url, {
       method,
@@ -90,7 +90,7 @@ export default function AdminPanel() {
 
   const handleCardDelete = (id) => {
     if (window.confirm('Tens a certeza que queres remover este modelo de carta?')) {
-      fetch(`https://npcardgame.onrender.com:3000/api/admin/cards/${id}`, { 
+      fetch(`https://npcardgame.onrender.com/api/admin/cards/${id}`, { 
         method: 'DELETE', 
         headers: getHeaders() 
       })
@@ -100,7 +100,7 @@ export default function AdminPanel() {
   };
 
   const handleUserUpdate = (id, coins, role) => {
-    fetch(`https://npcardgame.onrender.com:3000/api/admin/users/${id}`, {
+    fetch(`https://npcardgame.onrender.com/api/admin/users/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({ coins, role })
@@ -112,7 +112,7 @@ export default function AdminPanel() {
 
   const handleUserDelete = (id) => {
     if (window.confirm('Tens a certeza que queres eliminar este utilizador?')) {
-      fetch(`https://npcardgame.onrender.com:3000/api/admin/users/${id}`, { method: 'DELETE', headers: getHeaders() })
+      fetch(`https://npcardgame.onrender.com/api/admin/users/${id}`, { method: 'DELETE', headers: getHeaders() })
         .then(() => fetchUsers())
         .catch(err => console.error('Erro ao eliminar utilizador:', err));
     }
