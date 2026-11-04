@@ -192,7 +192,7 @@ export default function Inventory({ user }) {
     });
   };
 
-  if (loading) return <div style={{ color: '#fff', padding: '20px' }}>A abrir pergaminhos de inventário...</div>;
+  if (loading) return <Loader text="A carregar o inventário..." />;
 
   return (
     <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
