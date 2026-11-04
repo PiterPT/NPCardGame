@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import Loader from '../components/Loader';
 
-export default function Inventory({ user }) {
+const API_URL = 'https://npcardgame.onrender.com';
+
+export default function Inventory({ user, setUser }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('view'); // 'view', 'sell', 'feed'
@@ -11,6 +14,8 @@ export default function Inventory({ user }) {
   // Previsões em tempo real
   const [sellPreview, setSellPreview] = useState(0);
   const [feedPreview, setFeedPreview] = useState(null);
+  const [sellValues, setSellValues] = useState({}); // valor individual por carta
+  const [processing, setProcessing] = useState(false); // impede cliques duplos
 
   const showNotice = (text, type = 'info') => {
     setNotification({ text, type });
@@ -23,6 +28,29 @@ export default function Inventory({ user }) {
     return user.id_user || user.id || null;
   };
 
+  // Carrega perfil/inventário do servidor (fonte de verdade). Mantém o estado local de "trancada".
+  const fetchInventory = async (userId) => {
+    const res = await fetch(`${API_URL}/api/user/${userId}/profile`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao carregar o inventário.');
+    setCards(prev => {
+      const locked = new Set(prev.filter(c => c.is_locked).map(c => c.id_card));
+      return (data.cards || []).map(c => ({ ...c, is_locked: locked.has(c.id_card) }));
+    });
+    return data;
+  };
+
+  // Sincroniza o saldo de Ryo com o estado global e com o localStorage (usado pelo Header/Dashboard)
+  const syncCoins = (coins) => {
+    if (typeof coins !== 'number') return;
+    if (typeof setUser === 'function') setUser(prev => ({ ...prev, coins }));
+    try {
+      const stored = JSON.parse(localStorage.getItem('user')) || {};
+      stored.coins = coins;
+      localStorage.setItem('user', JSON.stringify(stored));
+    } catch (e) { /* ignorar */ }
+  };
+
   useEffect(() => {
     const userId = getUserId();
     if (!userId) {
@@ -31,57 +59,64 @@ export default function Inventory({ user }) {
       return;
     }
 
-    fetch(`https://npcardgame.onrender.com/api/user/${userId}/profile`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.cards) {
-          const formattedCards = data.cards.map(c => ({ ...c, is_locked: c.is_locked || false }));
-          setCards(formattedCards);
-        }
-        setLoading(false);
-      })
+    fetchInventory(userId)
       .catch((err) => {
         console.error('Erro ao carregar inventário:', err);
-        setLoading(false);
         showNotice('Erro ao carregar o inventário do servidor.', 'error');
-      });
+      })
+      .finally(() => setLoading(false));
   }, [user]);
 
   // Atualização dinâmica das previsões (Preview)
   useEffect(() => {
     const userId = getUserId();
     if (!userId) return;
+    let cancelled = false; // ignora respostas antigas se a seleção mudar entretanto
+
+    const postJson = async (path, body) => {
+      const res = await fetch(`${API_URL}/api/cards/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro no servidor.');
+      return data;
+    };
 
     if (mode === 'sell') {
       if (selectedCards.length === 0) {
         setSellPreview(0);
+        setSellValues({});
         return;
       }
-      fetch('https://npcardgame.onrender.com/api/cards/preview-sell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, cardIds: selectedCards })
-      })
-        .then(res => res.json())
-        .then(data => setSellPreview(data.totalRyos || 0))
-        .catch(err => console.error('Erro no preview sell:', err));
+      postJson('preview-sell', { userId, cardIds: selectedCards })
+        .then(data => {
+          if (cancelled) return;
+          setSellPreview(Number(data.totalRyos) || 0);
+          setSellValues(data.perCard || {});
+        })
+        .catch(err => {
+          console.error('Erro no preview sell:', err);
+          if (!cancelled) showNotice(`Erro ao calcular o valor da venda: ${err.message}`, 'error');
+        });
     } else if (mode === 'feed' && targetCardForFeed) {
       const sacrificeCardIds = selectedCards.filter(id => id !== targetCardForFeed.id_card);
       if (sacrificeCardIds.length === 0) {
         setFeedPreview(null);
         return;
       }
-      fetch('https://npcardgame.onrender.com/api/cards/preview-feed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, targetCardId: targetCardForFeed.id_card, sacrificeCardIds })
-      })
-        .then(res => res.json())
-        .then(data => setFeedPreview(data))
-        .catch(err => console.error('Erro no preview feed:', err));
+      postJson('preview-feed', { userId, targetCardId: targetCardForFeed.id_card, sacrificeCardIds })
+        .then(data => { if (!cancelled) setFeedPreview(data); })
+        .catch(err => {
+          console.error('Erro no preview feed:', err);
+          if (!cancelled) showNotice(`Erro ao calcular a previsão do feed: ${err.message}`, 'error');
+        });
     } else {
       setFeedPreview(null);
     }
+
+    return () => { cancelled = true; };
   }, [selectedCards, targetCardForFeed, mode, user]);
 
   const toggleLock = (e, cardId) => {
@@ -109,7 +144,7 @@ export default function Inventory({ user }) {
     }
   };
 
-  const handleConfirmSell = () => {
+  const handleConfirmSell = async () => {
     const userId = getUserId();
     if (!userId) {
       showNotice('Acesso negado. Sem identificação.', 'error');
@@ -120,27 +155,33 @@ export default function Inventory({ user }) {
       showNotice('Seleciona pelo menos uma carta para vender.', 'warning');
       return;
     }
+    if (processing) return;
+    setProcessing(true);
 
-    Promise.all(
-      selectedCards.map(cardId =>
-        fetch('https://npcardgame.onrender.com/api/cards/sell', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, cardId })
-        }).then(res => res.json())
-      )
-    )
-    .then(results => {
-      const totalRyos = results.reduce((acc, curr) => acc + (curr.ryosGanhos || 0), 0);
-      setCards(prev => prev.filter(c => !selectedCards.includes(c.id_card)));
+    try {
+      const res = await fetch(`${API_URL}/api/cards/sell`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, cardIds: selectedCards })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Erro ao processar a venda.');
+
+      syncCoins(data.newCoins);
       setSelectedCards([]);
       setSellPreview(0);
-      showNotice(`💰 Venda concluída! Vendeste ${results.length} carta(s) e recebeste ${totalRyos} Ryos.`, 'success');
-    })
-    .catch(() => showNotice('Erro ao processar a venda.', 'error'));
+      setSellValues({});
+      await fetchInventory(userId); // reflete exatamente o que ficou guardado na BD
+      showNotice(`💰 Venda concluída! Vendeste ${data.soldIds.length} carta(s) e recebeste ${data.totalRyos} Ryos.`, 'success');
+    } catch (err) {
+      console.error(err);
+      showNotice(err.message || 'Erro ao processar a venda.', 'error');
+    } finally {
+      setProcessing(false);
+    }
   };
 
-  const handleConfirmFeed = () => {
+  const handleConfirmFeed = async () => {
     const userId = getUserId();
     if (!userId) {
       showNotice('Acesso negado. Sem identificação.', 'error');
@@ -157,39 +198,30 @@ export default function Inventory({ user }) {
       showNotice('Seleciona pelo menos uma carta de sacrifício.', 'warning');
       return;
     }
+    if (processing) return;
+    setProcessing(true);
 
-    fetch('https://npcardgame.onrender.com/api/cards/feed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        targetCardId: targetCardForFeed.id_card,
-        sacrificeCardIds
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        setCards(prev => prev.filter(c => !sacrificeCardIds.includes(c.id_card)).map(c => {
-          if (c.id_card === targetCardForFeed.id_card) {
-            return { ...c, level: data.newLevel, xp: data.newXp };
-          }
-          return c;
-        }));
+    try {
+      const res = await fetch(`${API_URL}/api/cards/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, targetCardId: targetCardForFeed.id_card, sacrificeCardIds })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Erro ao processar o feed.');
 
-        setSelectedCards([]);
-        setTargetCardForFeed(null);
-        setFeedPreview(null);
-        setMode('view');
-        showNotice(data.message, 'success');
-      } else {
-        showNotice(data.error || 'Erro ao processar o feed.', 'error');
-      }
-    })
-    .catch(err => {
+      setSelectedCards([]);
+      setTargetCardForFeed(null);
+      setFeedPreview(null);
+      setMode('view');
+      await fetchInventory(userId); // nível, XP, atributos e inventário vêm da BD
+      showNotice(data.message, 'success');
+    } catch (err) {
       console.error(err);
-      showNotice('Erro de ligação ao servidor.', 'error');
-    });
+      showNotice(err.message || 'Erro de ligação ao servidor.', 'error');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   if (loading) return <Loader text="A carregar o inventário..." />;
@@ -204,7 +236,7 @@ export default function Inventory({ user }) {
           borderRadius: '8px',
           marginBottom: '15px',
           fontWeight: 'bold',
-          background: notification.type === 'success' ? '#15803d' : notification.type === 'warning' ? '#b45309' : '#1e293b',
+          background: notification.type === 'success' ? '#15803d' : notification.type === 'warning' ? '#b45309' : notification.type === 'error' ? '#b91c1c' : '#1e293b',
           color: '#fff',
           border: '1px solid rgba(255,255,255,0.2)'
         }}>
@@ -238,8 +270,9 @@ export default function Inventory({ user }) {
             {selectedCards.length > 0 && (
               <button 
                 onClick={handleConfirmSell}
-                style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-                Confirmar Venda ({selectedCards.length})
+                disabled={processing}
+                style={{ opacity: processing ? 0.6 : 1, padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {processing ? '⏳ A processar...' : `Confirmar Venda (${selectedCards.length})`}
               </button>
             )}
           </div>
@@ -249,8 +282,9 @@ export default function Inventory({ user }) {
         {mode === 'feed' && targetCardForFeed && selectedCards.filter(id => id !== targetCardForFeed.id_card).length > 0 && (
           <button 
             onClick={handleConfirmFeed}
-            style={{ marginLeft: 'auto', padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            Alimentar Carta
+            disabled={processing}
+            style={{ opacity: processing ? 0.6 : 1, marginLeft: 'auto', padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+            {processing ? '⏳ A processar...' : 'Alimentar Carta'}
           </button>
         )}
       </div>
@@ -264,6 +298,7 @@ export default function Inventory({ user }) {
               {feedPreview ? (
                 <div style={{ marginTop: '6px', color: '#68d391', fontWeight: 'bold' }}>
                   ✨ XP Ganho: +{feedPreview.totalXpGanha || 0} | 📈 Nível Previsto: Nvl {feedPreview.previewLevel || 1} ({feedPreview.previewXp || 0} / {feedPreview.xpNeeded || 1000} XP)
+                  {feedPreview.previewStats && ` | ❤️ ${feedPreview.previewStats.vida} ⚔️ ${feedPreview.previewStats.tai} 🌀 ${feedPreview.previewStats.nin}`}
                 </div>
               ) : (
                 <span style={{ color: '#cbd5e0', display: 'block', marginTop: '4px' }}>Seleciona as cartas para sacrificar em baixo para ver a previsão de nível.</span>
@@ -377,6 +412,11 @@ export default function Inventory({ user }) {
                   <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '10px' }}>
                     XP: {currentXp} / {xpNeeded}
                   </div>
+                  {mode === 'sell' && isChecked && sellValues[card.id_card] !== undefined && (
+                    <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold', marginBottom: '6px' }}>
+                      💰 {sellValues[card.id_card]} Ryos
+                    </div>
+                  )}
 
                   <div style={{ fontSize: '12px', color: '#ddd', display: 'flex', justifyContent: 'space-around', margin: '5px 0' }}>
                     <span>❤️ {card.vida}</span>

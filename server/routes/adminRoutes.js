@@ -9,7 +9,7 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: false }
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
 });
 
 // Middleware para verificar se o utilizador tem o cargo de Admin
@@ -32,8 +32,10 @@ const verifyAdmin = async (req, res, next) => {
   }
 };
 
-// Aplica a verificação a todas as rotas deste ficheiro
-router.use(verifyAdmin);
+// CORREÇÃO: a verificação aplica-se APENAS a /admin/*.
+// Antes, router.use(verifyAdmin) sem caminho intercetava TODOS os pedidos /api/* que passassem
+// por este router (perfil, cards/sell, cards/feed, gacha...) e devolvia "Acesso negado" a utilizadores normais.
+router.use('/admin', verifyAdmin);
 
 // ==========================================
 // GESTÃO DE UTILIZADORES

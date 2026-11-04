@@ -1,55 +1,131 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../index'); // Pool do PostgreSQL
+const { Pool } = require('pg');
+require('dotenv').config();
+
+// CORREÇÃO: o pool deixou de vir de require('../index') (dependência circular -> pool.query is not a function).
+// Passa a ser criado aqui, tal como nos restantes ficheiros de rotas.
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
+});
 
 // ==========================================
-// FÓRMULAS DE CÁLCULO
+// CONFIGURAÇÃO / FÓRMULAS
 // ==========================================
+
+// Inclui as classes usadas no painel de admin (E, R, SR, SSR, UR) e as antigas (D, C, B, A, S).
+const SELL_RYOS = { E: 100, D: 250, C: 500, B: 1000, A: 2500, S: 5000, R: 500, SR: 1500, SSR: 5000, UR: 15000 };
+const FEED_XP   = { E: 50,  D: 100, C: 250, B: 500,  A: 1000, S: 2000, R: 250, SR: 750,  SSR: 2000, UR: 5000 };
+const STAT_GROWTH_PER_LEVEL = 0.05; // +5% dos atributos base por nível ganho
+
+const toInt = (v, fallback = 0) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+const classOf = (card) => String(card.classe || 'E').trim().toUpperCase();
+const levelOf = (card) => Math.max(1, toInt(card.level, 1));
+
+// Aceita array, valor único ou lixo; devolve inteiros positivos únicos.
+const normalizeIds = (ids) => {
+  const arr = Array.isArray(ids) ? ids : (ids === undefined || ids === null ? [] : [ids]);
+  return [...new Set(arr.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+};
 
 function calculateSellRyos(card) {
-  const rarityRyos = { E: 100, D: 250, C: 500, B: 1000, A: 2500, S: 5000, UR: 15000 };
-  const baseRyos = rarityRyos[card.classe] || 100;
-  const levelBonus = (card.level || 1) * 50;
-  return baseRyos + levelBonus;
+  const base = SELL_RYOS[classOf(card)] || SELL_RYOS.E;
+  return base + levelOf(card) * 50;
 }
 
-function calculateFeedXp(sacrificeCard) {
-  const rarityMultipliers = { E: 50, D: 100, C: 250, B: 500, A: 1000, S: 2000, UR: 5000 };
-  const baseMultiplier = rarityMultipliers[sacrificeCard.classe] || 50;
-  
-  const statusSum = (sacrificeCard.vidastatus || sacrificeCard.vida || 0) + 
-                    (sacrificeCard.taistatus || sacrificeCard.tai || 0) + 
-                    (sacrificeCard.chakrastatus || sacrificeCard.nin || 0);
-  const levelBonus = (sacrificeCard.level || 1) * 100;
-
-  return baseMultiplier + Math.floor(statusSum * 0.5) + levelBonus;
+function calculateFeedXp(card) {
+  const base = FEED_XP[classOf(card)] || FEED_XP.E;
+  // CORREÇÃO: os atributos vêm como texto ("500"); antes eram concatenados em vez de somados.
+  const statusSum =
+    toInt(card.vidastatus ?? card.vida) +
+    toInt(card.taistatus ?? card.tai) +
+    toInt(card.chakrastatus ?? card.nin);
+  return base + Math.floor(statusSum * 0.5) + levelOf(card) * 100;
 }
+
+// Aplica XP e devolve nível/xp finais. XP necessário para subir = nível * 1000.
+function applyXp(level, xp, gained) {
+  let currentLevel = level;
+  let currentXp = xp + gained;
+  let xpNeeded = currentLevel * 1000;
+  while (currentXp >= xpNeeded) {
+    currentXp -= xpNeeded;
+    currentLevel += 1;
+    xpNeeded = currentLevel * 1000;
+  }
+  return { level: currentLevel, xp: currentXp, xpNeeded };
+}
+
+// Atributo ao nível N = base * (1 + 5% * (N-1)). A base vem do cardmodel; se não existir, é deduzida do valor atual.
+function scaleStat(card, statKey, baseKey, oldLevel, newLevel) {
+  const current = toInt(card[statKey]);
+  if (newLevel <= oldLevel) return current;
+  const base = card[baseKey] !== null && card[baseKey] !== undefined
+    ? toInt(card[baseKey])
+    : current / (1 + STAT_GROWTH_PER_LEVEL * (oldLevel - 1));
+  return Math.max(current, Math.round(base * (1 + STAT_GROWTH_PER_LEVEL * (newLevel - 1))));
+}
+
+function computeFeed(target, sacrifices) {
+  const totalXpGanha = sacrifices.reduce((sum, c) => sum + calculateFeedXp(c), 0);
+  const oldLevel = levelOf(target);
+  const res = applyXp(oldLevel, toInt(target.xp), totalXpGanha);
+  const stats = {
+    vida: scaleStat(target, 'vidastatus', 'base_vida', oldLevel, res.level),
+    tai:  scaleStat(target, 'taistatus',  'base_tai',  oldLevel, res.level),
+    nin:  scaleStat(target, 'chakrastatus', 'base_nin', oldLevel, res.level)
+  };
+  return { totalXpGanha, newLevel: res.level, newXp: res.xp, xpNeeded: res.xpNeeded, stats };
+}
+
+// Cartas pertencentes ao utilizador. Com lock=true bloqueia as linhas (evita cliques duplos / pedidos concorrentes).
+async function getOwnedCards(db, userId, ids, lock = false) {
+  if (ids.length === 0) return [];
+  const result = await db.query(
+    `SELECT c.*, cm.classe,
+            cm.vida AS base_vida, cm.tai AS base_tai, cm.nin AS base_nin
+       FROM inventario i
+       JOIN cards c ON c.id_card = i.id_card
+       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+      WHERE i.id_user = $1 AND i.id_card = ANY($2::int[])
+      ORDER BY c.id_card ${lock ? 'FOR UPDATE OF c' : ''}`,
+    [userId, ids]
+  );
+  return result.rows;
+}
+
+const getUserId = (body) => {
+  const n = Number(body && body.userId);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 
 // ==========================================
-// ROTAS DE PREVIEW
+// PREVIEWS
 // ==========================================
 
 router.post('/preview-sell', async (req, res) => {
-  const { userId, cardIds } = req.body;
-  if (!userId || !cardIds || cardIds.length === 0) {
-    return res.json({ totalRyos: 0 });
-  }
+  const userId = getUserId(req.body);
+  const cardIds = normalizeIds(req.body.cardIds);
+  if (!userId || cardIds.length === 0) return res.json({ totalRyos: 0, perCard: {} });
 
   try {
-    const result = await pool.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = ANY($1::int[]) AND i.id_user = $2`,
-      [cardIds, userId]
-    );
-
+    const cards = await getOwnedCards(pool, userId, cardIds);
+    const perCard = {};
     let totalRyos = 0;
-    result.rows.forEach(card => {
-      totalRyos += calculateSellRyos(card);
+    cards.forEach((card) => {
+      const value = calculateSellRyos(card);
+      perCard[card.id_card] = value;
+      totalRyos += value;
     });
-
-    res.json({ totalRyos });
+    res.json({ totalRyos, perCard });
   } catch (error) {
     console.error('Erro no preview de venda:', error);
     res.status(500).json({ error: 'Erro ao calcular preview de venda.' });
@@ -57,53 +133,25 @@ router.post('/preview-sell', async (req, res) => {
 });
 
 router.post('/preview-feed', async (req, res) => {
-  const { userId, targetCardId, sacrificeCardIds } = req.body;
-  if (!userId || !targetCardId || !sacrificeCardIds || sacrificeCardIds.length === 0) {
+  const userId = getUserId(req.body);
+  const targetCardId = Number(req.body.targetCardId);
+  const sacrificeIds = normalizeIds(req.body.sacrificeCardIds).filter((id) => id !== targetCardId);
+  if (!userId || !targetCardId || sacrificeIds.length === 0) {
     return res.json({ totalXpGanha: 0, previewLevel: 1, previewXp: 0, xpNeeded: 1000 });
   }
 
   try {
-    const targetRes = await pool.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = $1 AND i.id_user = $2`,
-      [targetCardId, userId]
-    );
+    const [target] = await getOwnedCards(pool, userId, [targetCardId]);
+    if (!target) return res.status(404).json({ error: 'Carta alvo não encontrada.' });
+    const sacrifices = await getOwnedCards(pool, userId, sacrificeIds);
 
-    if (targetRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Carta alvo não encontrada.' });
-    }
-    const targetCard = targetRes.rows[0];
-
-    const sacrificesRes = await pool.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = ANY($1::int[]) AND i.id_user = $2`,
-      [sacrificeCardIds, userId]
-    );
-
-    let totalXpGanha = 0;
-    sacrificesRes.rows.forEach(sacrificeCard => {
-      totalXpGanha += calculateFeedXp(sacrificeCard);
-    });
-
-    let currentLevel = targetCard.level || 1;
-    let currentXp = (targetCard.xp || 0) + totalXpGanha;
-    let xpNeeded = currentLevel * 1000;
-
-    while (currentXp >= xpNeeded) {
-      currentXp -= xpNeeded;
-      currentLevel += 1;
-      xpNeeded = currentLevel * 1000;
-    }
-
+    const r = computeFeed(target, sacrifices);
     res.json({
-      totalXpGanha,
-      previewLevel: currentLevel,
-      previewXp: currentXp,
-      xpNeeded
+      totalXpGanha: r.totalXpGanha,
+      previewLevel: r.newLevel,
+      previewXp: r.newXp,
+      xpNeeded: r.xpNeeded,
+      previewStats: r.stats
     });
   } catch (error) {
     console.error('Erro no preview de feed:', error);
@@ -112,146 +160,118 @@ router.post('/preview-feed', async (req, res) => {
 });
 
 // ==========================================
-// ROTAS DE AÇÃO (SELL & FEED)
+// SELL (uma ou várias cartas, numa única transação)
 // ==========================================
 
 router.post('/sell', async (req, res) => {
-  const { userId, cardId } = req.body;
+  const userId = getUserId(req.body);
+  // Aceita cardIds (lote) e cardId (compatibilidade com a versão anterior)
+  const cardIds = normalizeIds(req.body.cardIds !== undefined ? req.body.cardIds : req.body.cardId);
 
-  if (!userId || !cardId) {
-    return res.status(400).json({ error: 'Faltam dados obrigatórios (userId ou cardId).' });
+  if (!userId || cardIds.length === 0) {
+    return res.status(400).json({ error: 'Faltam dados obrigatórios (userId ou cardIds).' });
   }
 
   const client = await pool.connect();
-
   try {
     await client.query('BEGIN');
 
-    const invCheck = await client.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = $1 AND i.id_user = $2`,
-      [cardId, userId]
-    );
-
-    if (invCheck.rows.length === 0) {
+    const cards = await getOwnedCards(client, userId, cardIds, true);
+    // Tudo ou nada: se alguma carta não for do utilizador, nada é vendido.
+    if (cards.length !== cardIds.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Carta não encontrada no teu inventário.' });
+      return res.status(404).json({ error: 'Uma ou mais cartas não foram encontradas no teu inventário.' });
     }
 
-    const card = invCheck.rows[0];
-    const ryosGanhos = calculateSellRyos(card);
+    const totalRyos = cards.reduce((sum, c) => sum + calculateSellRyos(c), 0);
 
-    await client.query('DELETE FROM inventario WHERE id_card = $1 AND id_user = $2', [cardId, userId]);
-    await client.query('DELETE FROM cards WHERE id_card = $1', [cardId]);
-    await client.query(
-      'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2',
-      [ryosGanhos, userId]
+    await client.query('DELETE FROM inventario WHERE id_card = ANY($1::int[]) AND id_user = $2', [cardIds, userId]);
+    await client.query('DELETE FROM cards WHERE id_card = ANY($1::int[])', [cardIds]);
+    const coinsRes = await client.query(
+      'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2 RETURNING coins',
+      [totalRyos, userId]
     );
 
     await client.query('COMMIT');
 
     return res.json({
       success: true,
-      message: `Carta vendida com sucesso por ${ryosGanhos} Ryos!`,
-      ryosGanhos
+      message: `${cardIds.length} carta(s) vendida(s) por ${totalRyos} Ryos!`,
+      ryosGanhos: totalRyos,
+      totalRyos,
+      soldIds: cardIds,
+      newCoins: coinsRes.rows[0].coins
     });
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Erro ao vender carta:', error);
-    return res.status(500).json({ error: 'Erro interno ao vender a carta.' });
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao vender carta(s):', error);
+    return res.status(500).json({ error: 'Erro interno ao vender a(s) carta(s).' });
   } finally {
     client.release();
   }
 });
 
-router.post('/feed', async (req, res) => {
-  const { userId, targetCardId, sacrificeCardIds } = req.body;
+// ==========================================
+// FEED
+// ==========================================
 
-  if (!userId || !targetCardId || !sacrificeCardIds || sacrificeCardIds.length === 0) {
+router.post('/feed', async (req, res) => {
+  const userId = getUserId(req.body);
+  const targetCardId = Number(req.body.targetCardId);
+  const requestedIds = normalizeIds(req.body.sacrificeCardIds);
+
+  if (!userId || !Number.isInteger(targetCardId) || targetCardId <= 0 || requestedIds.length === 0) {
     return res.status(400).json({ error: 'Faltam dados obrigatórios para o feed.' });
   }
-
-  if (sacrificeCardIds.includes(targetCardId)) {
+  if (requestedIds.includes(targetCardId)) {
     return res.status(400).json({ error: 'Uma carta não se pode alimentar a si própria.' });
   }
 
   const client = await pool.connect();
-
   try {
     await client.query('BEGIN');
 
-    const targetRes = await client.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = $1 AND i.id_user = $2`,
-      [targetCardId, userId]
-    );
-
-    if (targetRes.rows.length === 0) {
+    const [target] = await getOwnedCards(client, userId, [targetCardId], true);
+    if (!target) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Carta alvo não encontrada.' });
     }
 
-    const targetCard = targetRes.rows[0];
-
-    const sacrificesRes = await client.query(
-      `SELECT c.*, cm.classe FROM inventario i
-       JOIN cards c ON i.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE i.id_card = ANY($1::int[]) AND i.id_user = $2`,
-      [sacrificeCardIds, userId]
-    );
-
-    if (sacrificesRes.rows.length === 0) {
+    const sacrifices = await getOwnedCards(client, userId, requestedIds, true);
+    if (sacrifices.length !== requestedIds.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Nenhuma carta de sacrifício válida encontrada.' });
+      return res.status(404).json({ error: 'Alguma carta de sacrifício não foi encontrada no teu inventário.' });
     }
 
-    let totalXpGanha = 0;
-    for (const sacrificeCard of sacrificesRes.rows) {
-      totalXpGanha += calculateFeedXp(sacrificeCard);
-    }
+    const r = computeFeed(target, sacrifices);
 
-    let currentLevel = targetCard.level || 1;
-    let currentXp = (targetCard.xp || 0) + totalXpGanha;
-    let xpNeeded = currentLevel * 1000;
+    // Só são apagadas as cartas validadas (pertencem ao utilizador)
+    await client.query('DELETE FROM inventario WHERE id_card = ANY($1::int[]) AND id_user = $2', [requestedIds, userId]);
+    await client.query('DELETE FROM cards WHERE id_card = ANY($1::int[])', [requestedIds]);
 
-    while (currentXp >= xpNeeded) {
-      currentXp -= xpNeeded;
-      currentLevel += 1;
-      xpNeeded = currentLevel * 1000;
-    }
-
-    // CORREÇÃO CRÍTICA: Removido alias incorreto "i." na instrução DELETE
-    await client.query(
-      'DELETE FROM inventario WHERE id_card = ANY($1::int[]) AND id_user = $2',
-      [sacrificeCardIds, userId]
+    // Nível, XP e atributos da carta principal
+    const upd = await client.query(
+      `UPDATE cards
+          SET level = $1, xp = $2, vidastatus = $3, taistatus = $4, chakrastatus = $5
+        WHERE id_card = $6`,
+      [r.newLevel, r.newXp, String(r.stats.vida), String(r.stats.tai), String(r.stats.nin), targetCardId]
     );
-    await client.query(
-      'DELETE FROM cards WHERE id_card = ANY($1::int[])',
-      [sacrificeCardIds]
-    );
-
-    await client.query(
-      'UPDATE cards SET level = $1, xp = $2 WHERE id_card = $3',
-      [currentLevel, currentXp, targetCardId]
-    );
+    if (upd.rowCount !== 1) throw new Error('Falha ao atualizar a carta principal.');
 
     await client.query('COMMIT');
 
     return res.json({
       success: true,
-      message: `Feed concluído! Ganhaste ${totalXpGanha} XP no total.`,
-      newLevel: currentLevel,
-      newXp: currentXp,
-      deletedIds: sacrificeCardIds
+      message: `Feed concluído! Ganhaste ${r.totalXpGanha} XP${r.newLevel > levelOf(target) ? ` e a carta subiu para o nível ${r.newLevel}` : ''}.`,
+      totalXpGanha: r.totalXpGanha,
+      newLevel: r.newLevel,
+      newXp: r.newXp,
+      xpNeeded: r.xpNeeded,
+      newStats: r.stats,
+      deletedIds: requestedIds
     });
-
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao realizar feed em lote:', error);
     return res.status(500).json({ error: 'Erro interno ao processar o feed.' });
   } finally {
