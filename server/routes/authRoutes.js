@@ -29,7 +29,7 @@ router.post('/auth/register', async (req, res) => {
     const client = await pool.connect();
 
     // 1. Verificar se o email já existe
-    const existingUser = await client.query('SELECT * FROM Users WHERE email = $1', [email]);
+    const existingUser = await client.query('SELECT * FROM users WHERE email = $1', [email]);
     if (existingUser.rows.length > 0) {
       client.release();
       return res.status(400).json({ error: 'Este email já está registado.' });
@@ -40,7 +40,7 @@ router.post('/auth/register', async (req, res) => {
 
     // 3. Inserir utilizador com a senha encriptada e moedas iniciais (ex: 1000 Ryo)
     const result = await client.query(
-      'INSERT INTO Users (name, email, password, coins) VALUES ($1, $2, $3, $4) RETURNING id_user, name, email, coins',
+      'INSERT INTO users (name, email, password, coins) VALUES ($1, $2, $3, $4) RETURNING id_user, name, email, coins',
       [name, email, hashedPassword, 1000]
     );
 
@@ -70,7 +70,7 @@ router.post('/auth/login', async (req, res) => {
     const client = await pool.connect();
 
     // 1. Procurar o utilizador pelo email
-    const result = await client.query('SELECT * FROM Users WHERE email = $1', [email]);
+    const result = await client.query('SELECT * FROM users WHERE email = $1', [email]);
 
     if (result.rows.length === 0) {
       client.release();
