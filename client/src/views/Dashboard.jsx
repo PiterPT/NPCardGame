@@ -6,12 +6,14 @@ export default function Dashboard({ user, setCurrentView }) {
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     if (!user) return;
     const userId = user.id_user || user.id;
 
-    // Vai buscar os dados reais do perfil, moedas e inventário do utilizador
-    fetch(`http://localhost:3000/api/user/${userId}/profile`)
+    // Usa a variável de ambiente da Vercel ou localhost como alternativa para desenvolvimento
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+    fetch(`${API_URL}/api/user/${userId}/profile`)
       .then(res => res.json())
       .then(data => {
         setProfileData(data);
