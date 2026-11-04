@@ -20,7 +20,7 @@ app.use(express.json());
 app.use('/api', authRoutes);
 app.use('/api', userRoutes);
 app.use('/api', gachaRoutes);
-app.use('/api', cardRoutes);
+app.use('/api/cards', cardRoutes);
 app.use('/api', adminRoutes);
 
 const PORT = process.env.PORT || 3000;
