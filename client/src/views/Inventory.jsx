@@ -4,11 +4,14 @@ export default function Inventory({ user }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('view'); // 'view', 'sell', 'feed'
-  const [selectedCards, setSelectedCards] = useState([]); // Guarda IDs das cartas selecionadas via Checkbox
+  const [selectedCards, setSelectedCards] = useState([]); // Guarda IDs das cartas selecionadas
   const [targetCardForFeed, setTargetCardForFeed] = useState(null); // Carta principal do Feed
-  const [notification, setNotification] = useState(null); // Sistema de notificação integrado (sem alert/confirm)
+  const [notification, setNotification] = useState(null); // Sistema de notificação
 
-  // Função para mostrar notificações temporárias
+  // Estados para Preview em tempo real
+  const [sellPreview, setSellPreview] = useState(0);
+  const [feedPreview, setFeedPreview] = useState(null);
+
   const showNotice = (text, type = 'info') => {
     setNotification({ text, type });
     setTimeout(() => setNotification(null), 4000);
@@ -22,7 +25,6 @@ export default function Inventory({ user }) {
       .then((res) => res.json())
       .then((data) => {
         if (data.cards) {
-          // Adiciona propriedade "locked" se não existir na BD
           const formattedCards = data.cards.map(c => ({ ...c, is_locked: c.is_locked || false }));
           setCards(formattedCards);
         }
@@ -34,9 +36,45 @@ export default function Inventory({ user }) {
       });
   }, [user]);
 
-  // Alternar o trancamento de uma carta (Lock/Unlock)
+  // Atualizar Preview de Venda ou Feed sempre que a seleção mudar
+  useEffect(() => {
+    const userId = user?.id_user || user?.id;
+    if (!userId) return;
+
+    if (mode === 'sell') {
+      if (selectedCards.length === 0) {
+        setSellPreview(0);
+        return;
+      }
+      fetch('https://npcardgame.onrender.com/api/cards/preview-sell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, cardIds: selectedCards })
+      })
+        .then(res => res.json())
+        .then(data => setSellPreview(data.totalRyos || 0))
+        .catch(err => console.error('Erro no preview sell:', err));
+    } else if (mode === 'feed' && targetCardForFeed) {
+      const sacrificeCardIds = selectedCards.filter(id => id !== targetCardForFeed.id_card);
+      if (sacrificeCardIds.length === 0) {
+        setFeedPreview(null);
+        return;
+      }
+      fetch('https://npcardgame.onrender.com/api/cards/preview-feed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, targetCardId: targetCardForFeed.id_card, sacrificeCardIds })
+      })
+        .then(res => res.json())
+        .then(data => setFeedPreview(data))
+        .catch(err => console.error('Erro no preview feed:', err));
+    } else {
+      setFeedPreview(null);
+    }
+  }, [selectedCards, targetCardForFeed, mode, user]);
+
   const toggleLock = (e, cardId) => {
-    e.stopPropagation(); // Evita ativar a seleção da carta ao clicar no cadeado
+    e.stopPropagation();
     setCards(prev => prev.map(c => {
       if (c.id_card === cardId) {
         const newStatus = !c.is_locked;
@@ -45,13 +83,11 @@ export default function Inventory({ user }) {
       }
       return c;
     }));
-    // TODO: Se tiveres rota na BD para guardar o estado de trancado, podes fazer um fetch aqui.
   };
 
-  // Gerir seleção por Checkbox
   const handleCheckboxToggle = (card) => {
     if (card.is_locked) {
-      showNotice('🔒 Esta carta está trancada! Destranca-a primeiro para a poderes selecionar.', 'warning');
+      showNotice('🔒 Esta carta está trancada! Destranca-a primeiro.', 'warning');
       return;
     }
 
@@ -62,7 +98,6 @@ export default function Inventory({ user }) {
     }
   };
 
-  // Processar Venda das Cartas Selecionadas
   const handleConfirmSell = () => {
     if (selectedCards.length === 0) {
       showNotice('Seleciona pelo menos uma carta para vender.', 'warning');
@@ -71,7 +106,6 @@ export default function Inventory({ user }) {
 
     const userId = user.id_user || user.id;
 
-    // Processa a venda de todas as cartas selecionadas
     Promise.all(
       selectedCards.map(cardId =>
         fetch('https://npcardgame.onrender.com/api/cards/sell', {
@@ -84,31 +118,28 @@ export default function Inventory({ user }) {
     .then(results => {
       const totalRyos = results.reduce((acc, curr) => acc + (curr.ryosGanhos || 0), 0);
       setCards(prev => prev.filter(c => !selectedCards.includes(c.id_card)));
-      setSelectedCards([]);
+      setSelectedCards();
+      setSellPreview(0);
       showNotice(`💰 Venda concluída! Vendeste ${results.length} carta(s) e recebeste ${totalRyos} Ryos.`, 'success');
     })
     .catch(() => showNotice('Erro ao processar a venda.', 'error'));
   };
 
-  // Processar Feed com as Cartas Selecionadas
   const handleConfirmFeed = () => {
     if (!targetCardForFeed) {
       showNotice('Escolhe a carta principal que vai receber a experiência.', 'warning');
       return;
     }
 
-    // Obter o ID do utilizador com segurança (suporta diferentes formatos de objeto user)
     const userId = user?.id_user || user?.id;
-
     if (!userId) {
-      showNotice('Erro: Utilizador não identificado. Inicia sessão novamente.', 'error');
+      showNotice('Erro: Utilizador não identificado.', 'error');
       return;
     }
 
     const sacrificeCardIds = selectedCards.filter(id => id !== targetCardForFeed.id_card);
-
     if (sacrificeCardIds.length === 0) {
-      showNotice('Seleciona pelo menos uma carta de sacrifício para o Feed.', 'warning');
+      showNotice('Seleciona pelo menos uma carta de sacrifício.', 'warning');
       return;
     }
 
@@ -116,7 +147,7 @@ export default function Inventory({ user }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId, // <--- Aqui vai o ID correto do utilizador
+        userId,
         targetCardId: targetCardForFeed.id_card,
         sacrificeCardIds
       })
@@ -133,6 +164,7 @@ export default function Inventory({ user }) {
 
         setSelectedCards([]);
         setTargetCardForFeed(null);
+        setFeedPreview(null);
         setMode('view');
         showNotice(data.message, 'success');
       } else {
@@ -151,7 +183,6 @@ export default function Inventory({ user }) {
     <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>📜 Inventário de Cartas do Shinobi</h2>
 
-      {/* Caixa de Notificação Fluida (Sem Alerts/Warnings do Navegador) */}
       {notification && (
         <div style={{
           padding: '12px 20px',
@@ -160,58 +191,69 @@ export default function Inventory({ user }) {
           fontWeight: 'bold',
           background: notification.type === 'success' ? '#15803d' : notification.type === 'warning' ? '#b45309' : '#1e293b',
           color: '#fff',
-          border: '1px solid rgba(255,255,255,0.2)',
-          transition: 'all 0.3s ease'
+          border: '1px solid rgba(255,255,255,0.2)'
         }}>
           {notification.text}
         </div>
       )}
 
-      {/* Painel de Modos / Ações no Topo */}
+      {/* Painel de Modos */}
       <div style={{ display: 'flex', gap: '15px', margin: '20px 0', background: '#1e1e2e', padding: '15px', borderRadius: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 'bold', color: '#ff9900' }}>Modo:</span>
         <button 
-          onClick={() => { setMode('view'); setSelectedCards([]); setTargetCardForFeed(null); }}
+          onClick={() => { setMode('view'); setSelectedCards([]); setTargetCardForFeed(null); setFeedPreview(null); }}
           style={{ padding: '8px 15px', background: mode === 'view' ? '#ff9900' : '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
           👁️ Ver Inventário
         </button>
         <button 
-          onClick={() => { setMode('sell'); setSelectedCards([]); setTargetCardForFeed(null); }}
+          onClick={() => { setMode('sell'); setSelectedCards([]); setTargetCardForFeed(null); setFeedPreview(null); }}
           style={{ padding: '8px 15px', background: mode === 'sell' ? '#ef4444' : '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
           💰 Vender Cartas
         </button>
         <button 
-          onClick={() => { setMode('feed'); setSelectedCards([]); setTargetCardForFeed(null); }}
+          onClick={() => { setMode('feed'); setSelectedCards([]); setTargetCardForFeed(null); setFeedPreview(null); }}
           style={{ padding: '8px 15px', background: mode === 'feed' ? '#3b82f6' : '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
           ✨ Feed (Subir Nível)
         </button>
 
-        {/* Botão de Ação do Modo Vender */}
+        {/* Botão e Preview Vender */}
         {mode === 'sell' && selectedCards.length > 0 && (
-          <button 
-            onClick={handleConfirmSell}
-            style={{ marginLeft: 'auto', padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            Confirmar Venda ({selectedCards.length})
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Valor total: 💰 {sellPreview} Ryos</span>
+            <button 
+              onClick={handleConfirmSell}
+              style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Confirmar Venda ({selectedCards.length})
+            </button>
+          </div>
         )}
 
-        {/* Botão de Ação do Modo Feed */}
-        {mode === 'feed' && targetCardForFeed && selectedCards.length > 0 && (
+        {/* Botão e Preview Feed */}
+        {mode === 'feed' && targetCardForFeed && selectedCards.filter(id => id !== targetCardForFeed.id_card).length > 0 && (
           <button 
             onClick={handleConfirmFeed}
             style={{ marginLeft: 'auto', padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            Alimentar {targetCardForFeed.name} ({selectedCards.filter(id => id !== targetCardForFeed.id_card).length} Cartas)
+            Alimentar Carta
           </button>
         )}
       </div>
 
-      {/* Instrução Dinâmica para Modo Feed */}
+      {/* Caixa Informativa e Previsões do Feed */}
       {mode === 'feed' && (
-        <div style={{ background: '#2d3748', padding: '10px 15px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', borderLeft: '4px solid #3b82f6' }}>
+        <div style={{ background: '#2d3748', padding: '12px 15px', borderRadius: '6px', marginBottom: '20px', fontSize: '14px', borderLeft: '4px solid #3b82f6' }}>
           {targetCardForFeed ? (
-            <span>Carta Alvo: <strong style={{ color: '#ff9900' }}>{targetCardForFeed.name} (Nvl {targetCardForFeed.level || 1})</strong>. Marca as checkboxes das cartas que queres sacrificar.</span>
+            <div>
+              <span>Carta Alvo: <strong style={{ color: '#ff9900' }}>{targetCardForFeed.name} (Nvl {targetCardForFeed.level || 1})</strong>. </span>
+              {feedPreview ? (
+                <div style={{ marginTop: '6px', color: '#68d391', fontWeight: 'bold' }}>
+                  ✨ XP Ganho: +{feedPreview.totalXpGanha} | 📈 Nível Previsto: Nvl {feedPreview.previewLevel} ({feedPreview.previewXp} / {feedPreview.xpNeeded} XP)
+                </div>
+              ) : (
+                <span style={{ color: '#cbd5e0' }}>Seleciona as cartas para sacrificar em baixo para ver a previsão de nível.</span>
+              )}
+            </div>
           ) : (
-            <span>Modo Feed: Clica na carta principal que queres **subir de nível**.</span>
+            <span>Modo Feed: Clica na carta principal do teu inventário que queres **subir de nível**.</span>
           )}
         </div>
       )}
@@ -247,10 +289,11 @@ export default function Inventory({ user }) {
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   position: 'relative',
-                  opacity: card.is_locked ? 0.85 : 1
+                  opacity: card.is_locked ? 0.85 : 1,
+                  cursor: (mode === 'feed' && !targetCardForFeed && !card.is_locked) ? 'pointer' : 'default'
                 }}
               >
-                {/* Ícone de Trancar/Destrancar no Canto Superior Esquerdo */}
+                {/* Botão Lock */}
                 <button
                   onClick={(e) => toggleLock(e, card.id_card)}
                   title={card.is_locked ? "Carta Trancada" : "Trancar Carta"}
@@ -275,8 +318,8 @@ export default function Inventory({ user }) {
                   {card.is_locked ? '🔒' : '🔓'}
                 </button>
 
-                {/* Checkbox de Seleção no Canto Superior Direito (Visível nos Modos Vender e Feed) */}
-                {mode !== 'view' && !isTarget && (
+                {/* Checkbox (Visível no modo Sell ou no modo Feed após escolher a carta alvo) */}
+                {mode !== 'view' && (!isTarget || mode === 'sell') && (
                   <input
                     type="checkbox"
                     checked={isChecked}
