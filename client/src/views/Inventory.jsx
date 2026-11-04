@@ -4,9 +4,9 @@ export default function Inventory({ user }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('view'); // 'view', 'sell', 'feed'
-  const [selectedCards, setSelectedCards] = useState([]); // Guarda IDs das cartas selecionadas
-  const [targetCardForFeed, setTargetCardForFeed] = useState(null); // Carta principal do Feed
-  const [notification, setNotification] = useState(null); // Sistema de notificação
+  const [selectedCards, setSelectedCards] = useState([]);
+  const [targetCardForFeed, setTargetCardForFeed] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   // Estados para Preview em tempo real
   const [sellPreview, setSellPreview] = useState(0);
@@ -17,9 +17,19 @@ export default function Inventory({ user }) {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  // 🔹 Função segura para obter o ID do utilizador (evita falhas de identificação)
+  const getUserId = () => {
+    if (!user) return null;
+    return user.id_user || user.id || user.userId || null;
+  };
+
   useEffect(() => {
-    if (!user) return;
-    const userId = user.id_user || user.id;
+    const userId = getUserId();
+    if (!userId) {
+      setLoading(false);
+      showNotice('Acesso negado. Sem identificação do utilizador.', 'error');
+      return;
+    }
 
     fetch(`https://npcardgame.onrender.com/api/user/${userId}/profile`)
       .then((res) => res.json())
@@ -33,12 +43,13 @@ export default function Inventory({ user }) {
       .catch((err) => {
         console.error('Erro ao carregar inventário:', err);
         setLoading(false);
+        showNotice('Erro ao carregar o inventário do servidor.', 'error');
       });
   }, [user]);
 
-  // Atualizar Preview de Venda ou Feed sempre que a seleção mudar
+  // Atualizar Preview com validação rigorosa do userId
   useEffect(() => {
-    const userId = user?.id_user || user?.id;
+    const userId = getUserId();
     if (!userId) return;
 
     if (mode === 'sell') {
@@ -99,12 +110,16 @@ export default function Inventory({ user }) {
   };
 
   const handleConfirmSell = () => {
+    const userId = getUserId();
+    if (!userId) {
+      showNotice('Acesso negado. Sem identificação.', 'error');
+      return;
+    }
+
     if (selectedCards.length === 0) {
       showNotice('Seleciona pelo menos uma carta para vender.', 'warning');
       return;
     }
-
-    const userId = user.id_user || user.id;
 
     Promise.all(
       selectedCards.map(cardId =>
@@ -118,7 +133,7 @@ export default function Inventory({ user }) {
     .then(results => {
       const totalRyos = results.reduce((acc, curr) => acc + (curr.ryosGanhos || 0), 0);
       setCards(prev => prev.filter(c => !selectedCards.includes(c.id_card)));
-      setSelectedCards();
+      setSelectedCards([]);
       setSellPreview(0);
       showNotice(`💰 Venda concluída! Vendeste ${results.length} carta(s) e recebeste ${totalRyos} Ryos.`, 'success');
     })
@@ -126,14 +141,14 @@ export default function Inventory({ user }) {
   };
 
   const handleConfirmFeed = () => {
-    if (!targetCardForFeed) {
-      showNotice('Escolhe a carta principal que vai receber a experiência.', 'warning');
+    const userId = getUserId();
+    if (!userId) {
+      showNotice('Acesso negado. Sem identificação.', 'error');
       return;
     }
 
-    const userId = user?.id_user || user?.id;
-    if (!userId) {
-      showNotice('Erro: Utilizador não identificado.', 'error');
+    if (!targetCardForFeed) {
+      showNotice('Escolhe a carta principal que vai receber a experiência.', 'warning');
       return;
     }
 
@@ -318,7 +333,7 @@ export default function Inventory({ user }) {
                   {card.is_locked ? '🔒' : '🔓'}
                 </button>
 
-                {/* Checkbox (Visível no modo Sell ou no modo Feed após escolher a carta alvo) */}
+                {/* Checkbox */}
                 {mode !== 'view' && (!isTarget || mode === 'sell') && (
                   <input
                     type="checkbox"
