@@ -81,14 +81,14 @@ router.get('/pvp/user/:id', async (req, res) => {
 // 2. RANKING E TOP 5
 // ==========================================
 
+// GET /api/pvp/ranking
 router.get('/pvp/ranking', async (req, res) => {
   try {
-    // Retorna o Top do ranking ordenado por pontos
     const result = await pool.query(
-      `SELECT r.rank, r.points, u.id_user, u.name 
-       FROM pvp_ranking r
-       JOIN users u ON r.id_user = u.id_user
-       ORDER BY r.points DESC LIMIT 20`
+      `SELECT COALESCE(r.rank, 999) as rank, COALESCE(r.points, 1000) as points, u.id_user, u.name 
+       FROM users u
+       LEFT JOIN pvp_ranking r ON u.id_user = r.id_user
+       ORDER BY COALESCE(r.points, 1000) DESC LIMIT 20`
     );
     res.json(result.rows);
   } catch (err) {

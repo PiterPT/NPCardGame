@@ -23,28 +23,47 @@ export default function PvpArena({ user, setUser }) {
 
   const fetchRanking = () => {
     fetch(`${API_URL}/api/pvp/ranking`)
-      .then(res => res.json())
-      .then(data => setRanking(data))
-      .catch(err => console.error('Erro ao buscar ranking:', err));
+      .then(res => {
+        if (!res.ok) throw new Error('Erro na resposta do servidor');
+        return res.json();
+      })
+      .then(data => {
+        // Garante que só define no estado se o resultado for um Array
+        if (Array.isArray(data)) {
+          setRanking(data);
+        } else {
+          setRanking([]);
+        }
+      })
+      .catch(err => {
+        console.error('Erro no fetch do ranking:', err);
+        setRanking([]);
+      });
   };
 
   const fetchInventoryAndDefense = () => {
     fetch(`${API_URL}/api/user/${userId}/profile`)
       .then(res => res.json())
       .then(data => {
-        setInventory(data.cards || []);
-      });
+        if (data && Array.isArray(data.cards)) {
+          setInventory(data.cards);
+        }
+      })
+      .catch(err => console.error(err));
 
     fetch(`${API_URL}/api/pvp/user/${userId}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Erro na defesa');
+        return res.json();
+      })
       .then(data => {
-        if (data.defenseCards) {
+        if (data && Array.isArray(data.defenseCards)) {
           setMyDefense(data.defenseCards);
           setSelectedDefense(data.defenseCards.map(c => c.id_card));
         }
-      });
+      })
+      .catch(err => console.error(err));
   };
-
   const handleSaveDefense = () => {
     if (selectedDefense.length > 5) {
       alert('Máximo de 5 cartas na equipa de defesa!');
