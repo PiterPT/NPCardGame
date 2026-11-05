@@ -8,6 +8,7 @@
   min-height: 250px;
   background: rgba(18, 18, 18, 0.85);
   border-radius: 12px;
+  box-sizing: border-box;
 }
 
 .loader-container {
@@ -32,9 +33,22 @@
   font-weight: bold;
   font-size: 15px;
   letter-spacing: 0.5px;
+  text-align: center;
 }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .loader-overlay {
+    padding: 20px;
+    min-height: 180px;
+  }
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+  }
 }

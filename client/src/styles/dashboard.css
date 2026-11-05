@@ -7,6 +7,7 @@
   display: flex;
   flex-direction: column;
   gap: 25px;
+  box-sizing: border-box;
 }
 
 /* Secção de Boas-vindas */
@@ -107,6 +108,7 @@
   background: #2a2a2a;
   padding: 12px;
   border-radius: 8px;
+  flex-shrink: 0;
 }
 
 .stat-value {
@@ -137,6 +139,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+  gap: 10px;
 }
 
 .section-title {
@@ -164,7 +167,7 @@
 /* Grelhas Internas */
 .cards-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
 }
 
@@ -175,6 +178,9 @@
   padding: 12px;
   text-align: center;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .mini-card.ur {
@@ -183,8 +189,9 @@
 }
 
 .mini-card img {
-  width: 90px;
-  height: 115px;
+  width: 100%;
+  max-width: 110px;
+  height: 120px;
   object-fit: cover;
   border-radius: 6px;
   margin-bottom: 8px;
@@ -215,8 +222,57 @@
   border-radius: 6px;
   font-weight: bold;
   cursor: pointer;
+  width: 100%;
 }
 
 .activity-btn:hover {
   background: #ffa81a;
+}
+
+/* Adaptabilidade para Tablets e Telemóveis */
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .welcome-card {
+    padding: 18px;
+  }
+
+  .welcome-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-section {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cards-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .mini-card {
+    padding: 8px;
+  }
+
+  .mini-card img {
+    height: 100px;
+  }
+
+  .activities-grid {
+    grid-template-columns: 1fr;
+  }
 }
