@@ -1,6 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../index'); // Pool do PostgreSQL
+const { Pool } = require('pg');
+require('dotenv').config();
+
+// CORRECAO: o pool deixou de vir de require('../index'). O index.js nao exporta nada (e a importacao seria circular),
+// pelo que pool.connect() falhava e todas as rotas PvP davam erro. Passa a ser criado aqui, como nos outros ficheiros de rotas.
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
+});
 
 // ==========================================
 // CONFIGURACAO PvP (valores A CONFIRMAR)

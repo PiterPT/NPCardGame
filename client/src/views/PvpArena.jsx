@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as pvpCache from './pvpCache';
 
 const ORANGE = '#ff9900';
 const RED = '#ef4444';
@@ -55,93 +56,124 @@ function BattleResultModal({ battle, onClose }) {
 }
 
 export default function PvpArena({ user, setUser }) {
+  const userId = Number(user.id_user || user.id);
+  const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
+
+  // O que ja esta em cache (mesmo desatualizado) aparece logo; o servidor so e consultado se for preciso.
+  const cached = (key) => pvpCache.peek(userId, key);
+  const cachedUser = cached('user');
+  const cachedInventory = cached('inventory');
+
   const [tab, setTab] = useState('ranking'); // 'ranking', 'defense', 'history', 'infinite'
-  const [ranking, setRanking] = useState([]);
-  const [myDefense, setMyDefense] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [selectedDefense, setSelectedDefense] = useState([]);
+  const [ranking, setRanking] = useState(() => cached('ranking') || []);
+  const [myDefense, setMyDefense] = useState(() => (cachedUser && cachedUser.defenseCards) || []);
+  const [inventory, setInventory] = useState(() => cachedInventory || []);
+  const [inventoryStatus, setInventoryStatus] = useState(() =>
+    cachedInventory ? (cachedInventory.length > 0 ? 'ok' : 'empty') : 'loading'
+  ); // 'loading' | 'ok' | 'empty' | 'error:<motivo>'
+  const [selectedDefense, setSelectedDefense] = useState(() =>
+    ((cachedUser && cachedUser.defenseCards) || []).map(c => c.id_card)
+  );
 
   // Estado PvP do jogador
-  const [myRank, setMyRank] = useState(null);
-  const [myPoints, setMyPoints] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [notifications, setNotifications] = useState({ unread: 0, notifications: [] });
+  const [myRank, setMyRank] = useState(() => (cachedUser ? cachedUser.rank : null));
+  const [myPoints, setMyPoints] = useState(() => (cachedUser ? cachedUser.points : null));
+  const [stats, setStats] = useState(() => (cachedUser && cachedUser.stats) || null);
+  const [history, setHistory] = useState(() => cached('history') || []);
+  const [notifications, setNotifications] = useState(() => cached('notifications') || { unread: 0, notifications: [] });
   const [battleResult, setBattleResult] = useState(null);
   const [challenging, setChallenging] = useState(false);
+
+  // Impede que uma atualizacao em segundo plano apague a selecao de cartas que o jogador esta a editar.
+  const deckDirty = useRef(false);
 
   // Modo Infinito States
   const [infiniteWave, setInfiniteWave] = useState(1);
   const [infiniteActive, setInfiniteActive] = useState(false);
   const [enemyWaveCard, setEnemyWaveCard] = useState({ name: 'Bandido da Névoa', vida: 600, tai: 80, nin: 50 });
 
-  const userId = Number(user.id_user || user.id);
-  const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
+  // Gacha e Inventario gravam o saldo em localStorage; se mudou, o inventario em cache ja nao e fiavel.
+  const readCoins = () => {
+    try { return JSON.parse(localStorage.getItem('user')).coins; } catch { return null; }
+  };
 
+  // ---------- Carregamento (sempre via cache) ----------
+  const loadRanking = (force = false) =>
+    pvpCache.load(userId, 'ranking', `${API_URL}/api/pvp/ranking`, {
+      force,
+      parse: (d) => { if (!Array.isArray(d)) throw new Error('resposta inválida'); return d; },
+      onData: setRanking,
+      onError: (err) => console.error('Erro no fetch do ranking:', err)
+    });
+
+  const loadUser = (force = false) =>
+    pvpCache.load(userId, 'user', `${API_URL}/api/pvp/user/${userId}`, {
+      force,
+      onData: (d) => {
+        setMyRank(d.rank);
+        setMyPoints(d.points);
+        setStats(d.stats || null);
+        if (Array.isArray(d.defenseCards)) {
+          setMyDefense(d.defenseCards);
+          if (!deckDirty.current) setSelectedDefense(d.defenseCards.map(c => c.id_card));
+        }
+      },
+      onError: (err) => console.error('Erro ao carregar dados PvP:', err)
+    });
+
+  const loadInventory = (force = false) =>
+    pvpCache.load(userId, 'inventory', `${API_URL}/api/user/${userId}/profile`, {
+      force,
+      fingerprint: readCoins(),
+      parse: (body) => {
+        if (!body || !Array.isArray(body.cards)) {
+          throw new Error(`a resposta não tem a lista "cards" (campos: ${body ? Object.keys(body).join(', ') : 'nenhum'})`);
+        }
+        return body.cards;
+      },
+      onData: (cards) => {
+        setInventory(cards);
+        setInventoryStatus(cards.length > 0 ? 'ok' : 'empty');
+      },
+      onError: (err, hadCache) => {
+        console.error(err);
+        if (!hadCache) setInventoryStatus(`error:${err.message}`);
+      }
+    });
+
+  const loadHistory = (force = false) =>
+    pvpCache.load(userId, 'history', `${API_URL}/api/pvp/history/${userId}`, {
+      force,
+      parse: (d) => (Array.isArray(d) ? d : []),
+      onData: setHistory,
+      onError: (err) => console.error(err)
+    });
+
+  const loadNotifications = (force = false) =>
+    pvpCache.load(userId, 'notifications', `${API_URL}/api/pvp/notifications/${userId}`, {
+      force,
+      parse: (d) => ({ unread: (d && d.unread) || 0, notifications: (d && Array.isArray(d.notifications)) ? d.notifications : [] }),
+      onData: setNotifications,
+      onError: (err) => console.error(err)
+    });
+
+  // So se carrega o que o separador visivel precisa (e so se estiver desatualizado).
   useEffect(() => {
-    fetchRanking();
-    fetchInventoryAndDefense();
-    fetchHistory();
-    fetchNotifications();
-  }, []);
-
-  const fetchRanking = () => {
-    fetch(`${API_URL}/api/pvp/ranking`)
-      .then(res => {
-        if (!res.ok) throw new Error('Erro na resposta do servidor');
-        return res.json();
-      })
-      .then(data => setRanking(Array.isArray(data) ? data : []))
-      .catch(err => {
-        console.error('Erro no fetch do ranking:', err);
-        setRanking([]);
-      });
-  };
-
-  const fetchInventoryAndDefense = () => {
-    fetch(`${API_URL}/api/user/${userId}/profile`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data.cards)) {
-          setInventory(data.cards);
-        }
-      })
-      .catch(err => console.error(err));
-
-    fetch(`${API_URL}/api/pvp/user/${userId}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Erro ao carregar dados PvP');
-        return res.json();
-      })
-      .then(data => {
-        setMyRank(data.rank);
-        setMyPoints(data.points);
-        setStats(data.stats || null);
-        if (data && Array.isArray(data.defenseCards)) {
-          setMyDefense(data.defenseCards);
-          setSelectedDefense(data.defenseCards.map(c => c.id_card));
-        }
-      })
-      .catch(err => console.error(err));
-  };
-
-  const fetchHistory = () => {
-    fetch(`${API_URL}/api/pvp/history/${userId}`)
-      .then(res => (res.ok ? res.json() : []))
-      .then(data => setHistory(Array.isArray(data) ? data : []))
-      .catch(err => console.error(err));
-  };
-
-  const fetchNotifications = () => {
-    fetch(`${API_URL}/api/pvp/notifications/${userId}`)
-      .then(res => (res.ok ? res.json() : { unread: 0, notifications: [] }))
-      .then(data => setNotifications(data))
-      .catch(err => console.error(err));
-  };
+    loadNotifications(); // contador do separador "Histórico"
+    if (tab === 'ranking') { loadRanking(); loadUser(); }
+    if (tab === 'defense') { loadUser(); loadInventory(); }
+    if (tab === 'history') { loadHistory(); loadUser(); }
+  }, [tab]);
 
   const handleMarkRead = () => {
     fetch(`${API_URL}/api/pvp/notifications/${userId}/read`, { method: 'POST' })
-      .then(() => fetchNotifications())
+      .then(res => {
+        if (!res.ok) throw new Error('Erro ao marcar como lidas.');
+        // Atualiza localmente, sem novo pedido.
+        const next = { unread: 0, notifications: notifications.notifications.map(n => ({ ...n, is_read: true })) };
+        setNotifications(next);
+        pvpCache.set(userId, 'notifications', next);
+      })
       .catch(err => console.error(err));
   };
 
@@ -173,7 +205,9 @@ export default function PvpArena({ user, setUser }) {
       }
 
       alert(data.message || 'Deck guardado com sucesso!');
-      fetchInventoryAndDefense();
+      deckDirty.current = false;
+      pvpCache.invalidate(userId, 'user');
+      loadUser(true);
     } catch (err) {
       console.error('Erro ao guardar deck:', err);
       alert(`Falha ao guardar: ${err.message}`);
@@ -201,9 +235,9 @@ export default function PvpArena({ user, setUser }) {
       alert(err.message);
     } finally {
       setChallenging(false);
-      fetchRanking();
-      fetchInventoryAndDefense();
-      fetchHistory();
+      pvpCache.invalidate(userId, ['ranking', 'user', 'history']);
+      loadRanking(true);
+      loadUser(true);
     }
   };
 
@@ -245,7 +279,7 @@ export default function PvpArena({ user, setUser }) {
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => setTab('ranking')} style={tabStyle('ranking')}>🏆 Ranking</button>
         <button type="button" onClick={() => setTab('defense')} style={tabStyle('defense')}>🛡️ Deck de Batalha</button>
-        <button type="button" onClick={() => { setTab('history'); fetchHistory(); fetchNotifications(); }} style={tabStyle('history')}>
+        <button type="button" onClick={() => setTab('history')} style={tabStyle('history')}>
           📜 Histórico{notifications.unread > 0 ? ` (${notifications.unread})` : ''}
         </button>
         <button type="button" onClick={() => setTab('infinite')} style={tabStyle('infinite')}>🌀 Modo Infinito (Farm)</button>
@@ -302,6 +336,13 @@ export default function PvpArena({ user, setUser }) {
           <h3 style={{ color: ORANGE, marginBottom: '10px' }}>Deck de Batalha (Máx 5 Cartas)</h3>
           <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>Este deck é usado quando desafias o jogador acima de ti e quando outros te desafiam. Clica numa carta para a adicionar ou remover.</p>
 
+          {inventoryStatus === 'loading' && <div style={{ color: '#aaa', marginBottom: '20px' }}>A carregar as tuas cartas...</div>}
+          {inventoryStatus === 'empty' && <div style={{ color: '#aaa', marginBottom: '20px' }}>Não tens cartas disponíveis.</div>}
+          {inventoryStatus.startsWith('error:') && (
+            <div style={{ background: '#3b0d0d', border: `1px solid ${RED}`, borderRadius: '6px', padding: '10px', marginBottom: '20px', fontSize: '13px' }}>
+              Não foi possível carregar as tuas cartas: {inventoryStatus.slice(6)}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' }}>
             {inventory.map(card => {
               const isSelected = selectedDefense.includes(card.id_card);
@@ -309,6 +350,7 @@ export default function PvpArena({ user, setUser }) {
                 <div 
                   key={card.id_card}
                   onClick={() => {
+                    deckDirty.current = true;
                     if (isSelected) {
                       setSelectedDefense(prev => prev.filter(id => id !== card.id_card));
                     } else {

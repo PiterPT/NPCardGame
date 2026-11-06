@@ -4,7 +4,7 @@ require('dotenv').config();
 
 const app = express();
 
-// Configuração de CORS e suporte a payload Base64 até 50MB
+// Configuração de CORS e suporte a payload Base64 até 50MB (definido apenas uma vez)
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -16,14 +16,14 @@ const gachaRoutes = require('./routes/gachaRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const cardRoutes = require('./routes/cardRoutes');
 const pvpRoutes = require('./routes/pvpRoutes');
-app.use(express.json());
-// Registar rotas (gachaRoutes fica livre do middleware restrito de admin)
+
+// Registar rotas com os prefixos corretos
 app.use('/api', authRoutes);
 app.use('/api', userRoutes);
 app.use('/api', gachaRoutes);
 app.use('/api/cards', cardRoutes);
 app.use('/api', pvpRoutes);
-app.use('/api', adminRoutes);
+app.use('/api', adminRoutes); // Contém as rotas /admin/...
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor Ninja Legends ativo na porta ${PORT}`));

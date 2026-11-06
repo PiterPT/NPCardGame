@@ -9,7 +9,8 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+  family: 4 // Força IPv4 e evita timeouts de conexão em vários alojamentos cloud
 });
 
 // Middleware para verificar se o utilizador tem o cargo de Admin
