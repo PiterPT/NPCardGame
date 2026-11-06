@@ -34,6 +34,11 @@ const BANNERS = {
   }
 };
 
+// As imagens estao na BD em base64 (varios MB cada): nao se carregam para a memoria nem vao no JSON.
+// O JSON leva o URL da rota de imagens (com cache do navegador). PUBLIC_API_URL e opcional.
+const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || 'https://npcardgame.onrender.com').replace(/\/$/, '');
+const cardImageUrl = (idModel) => (idModel ? `${PUBLIC_API_URL}/api/pvp/card-image/${idModel}` : null);
+
 function rollRarity(probabilities) {
   const rand = Math.random();
   let cumulative = 0;
@@ -78,7 +83,7 @@ router.post('/gacha/pull', async (req, res) => {
     }
 
     // 2. Buscar modelos de cartas disponíveis
-    const modelsResult = await client.query('SELECT * FROM cardmodel');
+    const modelsResult = await client.query('SELECT id_modelcard, name, vida, tai, nin, classe FROM cardmodel');
     const allModels = modelsResult.rows;
 
     if (allModels.length === 0) {
@@ -127,7 +132,7 @@ router.post('/gacha/pull', async (req, res) => {
         vida: randomCard.vida,
         tai: randomCard.tai,
         nin: randomCard.nin,
-        image_url: randomCard.image_url,
+        image_url: cardImageUrl(randomCard.id_modelcard),
         classe: randomCard.classe || selectedClasse
       });
     }

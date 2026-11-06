@@ -12,6 +12,11 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// As imagens das cartas estao na BD em base64 (varios MB cada). Nunca vao dentro do JSON:
+// o JSON leva o URL da rota de imagens (com cache do navegador). PUBLIC_API_URL e opcional.
+const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || 'https://npcardgame.onrender.com').replace(/\/$/, '');
+const cardImageUrl = (idModel) => (idModel ? `${PUBLIC_API_URL}/api/pvp/card-image/${idModel}` : null);
+
 // GET /api/user/:id/profile - Obtém Perfil e Inventário com JOIN completo
 router.get('/user/:id/profile', async (req, res) => {
   const userId = req.params.id;
@@ -41,7 +46,7 @@ router.get('/user/:id/profile', async (req, res) => {
               c.chakrastatus as nin, 
               c.level,
               c.xp,
-              cm.image_url, 
+              c.id_cardmodel,
               cm.classe 
        FROM inventario i
        JOIN cards c ON i.id_card = c.id_card
@@ -57,7 +62,10 @@ router.get('/user/:id/profile', async (req, res) => {
       name: user.name,
       email: user.email,
       coins: user.coins,
-      cards: cardsResult.rows
+      cards: cardsResult.rows.map(({ id_cardmodel, ...card }) => ({
+        ...card,
+        image_url: cardImageUrl(id_cardmodel)
+      }))
     });
 
   } catch (error) {
