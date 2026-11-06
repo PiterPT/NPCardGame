@@ -43,7 +43,7 @@ export default function Dashboard({ user, setCurrentView }) {
             <p className="welcome-subtitle">Continua a tua jornada para te tornares Hokage.</p>
           </div>
           <div className="level-badge">
-            NÍVEL 12
+            NÍVEL {user.level || 1}
           </div>
         </div>
         <div className="xp-container">
