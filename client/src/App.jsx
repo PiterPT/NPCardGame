@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Inventory from './views/Inventory';
-import PvpArena from './views/PvpArena'; // 👈 Novo componente importado
+import PvpArena from './views/PvpArena';
 import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
 import './styles/global.css';
@@ -29,6 +29,10 @@ export default function App() {
     setCurrentView('dashboard');
   };
 
+  const handleNavClick = (view) => {
+    setCurrentView(view);
+  };
+
   if (!user) {
     return <Login onLoginSuccess={(loggedInUser) => {
       localStorage.setItem('user', JSON.stringify(loggedInUser));
@@ -37,56 +41,70 @@ export default function App() {
   }
 
   return (
-    <div className="app-layout" style={{ display: 'flex', minHeight: '100vh', background: '#121212', color: '#fff' }}>
-      
+    <div className="app-layout">
+      {/* Checkbox invisível para controlar o estado do menu através de CSS puro */}
+      <input type="checkbox" id="sidebar-toggle" className="sidebar-toggle-checkbox" />
+
+      {/* Overlay escuro de fundo para ecrãs móveis */}
+      <label htmlFor="sidebar-toggle" className="menu-overlay"></label>
+
       {/* Sidebar de Navegação */}
-      <aside style={{ width: '240px', background: '#191926', borderRight: '1px solid #2a2a3a', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <h2 style={{ color: '#ff9900', fontSize: '18px', marginBottom: '20px' }}>🥷 NINJA LEGENDS</h2>
+      <aside className="app-sidebar">
+        <h2 className="sidebar-brand">🥷 NINJA LEGENDS</h2>
         
-        <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', marginBottom: '5px', letterSpacing: '1px' }}>Menu</div>
+        <div className="sidebar-section-title">Menu</div>
         
-        <button onClick={() => setCurrentView('dashboard')} style={{ background: currentView === 'dashboard' ? '#ff9900' : 'transparent', color: currentView === 'dashboard' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => handleNavClick('dashboard')} className={`nav-btn ${currentView === 'dashboard' ? 'active' : ''}`}>
           📊 Dashboard
         </button>
-        <button onClick={() => setCurrentView('inventory')} style={{ background: currentView === 'inventory' ? '#ff9900' : 'transparent', color: currentView === 'inventory' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => handleNavClick('inventory')} className={`nav-btn ${currentView === 'inventory' ? 'active' : ''}`}>
           📜 Inventário / Equipa
         </button>
-        <button onClick={() => setCurrentView('gacha')} style={{ background: currentView === 'gacha' ? '#ff9900' : 'transparent', color: currentView === 'gacha' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => handleNavClick('gacha')} className={`nav-btn ${currentView === 'gacha' ? 'active' : ''}`}>
           🔮 Portal Gacha
         </button>
-        <button onClick={() => setCurrentView('pvp')} style={{ background: currentView === 'pvp' ? '#ff9900' : 'transparent', color: currentView === 'pvp' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => handleNavClick('pvp')} className={`nav-btn ${currentView === 'pvp' ? 'active' : ''}`}>
           ⚔️ Arena PvP & Infinito
         </button>
 
         {user.role === 'admin' && (
           <>
-            <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', marginTop: '15px', marginBottom: '5px', letterSpacing: '1px' }}>Admin</div>
-            <button onClick={() => setCurrentView('admin')} style={{ background: currentView === 'admin' ? '#ff9900' : 'transparent', color: currentView === 'admin' ? '#000' : '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>
+            <div className="sidebar-section-title admin-title">Admin</div>
+            <button onClick={() => handleNavClick('admin')} className={`nav-btn ${currentView === 'admin' ? 'active' : ''}`}>
               ⚙️ Painel ADM
             </button>
           </>
         )}
 
-        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #2a2a3a' }}>
-          <button onClick={handleLogout} style={{ width: '100%', background: '#ff4d4d', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+        <div className="sidebar-footer">
+          <button onClick={handleLogout} className="logout-btn">
             Terminar Sessão
           </button>
         </div>
       </aside>
 
       {/* Conteúdo Principal / Top Bar */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ height: '70px', background: '#191926', borderBottom: '1px solid #2a2a3a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 30px' }}>
-          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ff9900' }}>Centro de Controlo Ninja</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <span style={{ background: '#222233', padding: '6px 14px', borderRadius: '20px', border: '1px solid #333', fontSize: '14px' }}>
+      <main className="app-main">
+        <header className="app-header">
+          <div className="header-left">
+            {/* Botão Hambúrguer em formato de label ligada ao checkbox */}
+            <label htmlFor="sidebar-toggle" className="hamburger-btn" aria-label="Abrir Menu">
+              <span></span>
+              <span></span>
+              <span></span>
+            </label>
+            <div className="header-title">Centro de Controlo Ninja</div>
+          </div>
+
+          <div className="header-right">
+            <span className="coin-badge">
               💰 <strong>{user.coins}</strong> Ryo
             </span>
-            <span>👤 <strong>{user.name}</strong></span>
+            <span className="user-name">👤 <strong>{user.name}</strong></span>
           </div>
         </header>
 
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="app-content-view">
           {currentView === 'dashboard' && <Dashboard user={user} setCurrentView={setCurrentView} />}
           {currentView === 'inventory' && <Inventory user={user} setUser={handleUpdateUser} />}
           {currentView === 'gacha' && <Gacha user={user} setUser={handleUpdateUser} />}
@@ -94,7 +112,6 @@ export default function App() {
           {currentView === 'admin' && user.role === 'admin' && <AdminPanel />}
         </div>
       </main>
-
     </div>
   );
 }

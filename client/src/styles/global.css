@@ -1,42 +1,196 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-body {
-  background-color: #121212;
-  color: #ffffff;
-  font-family: 'Inter', sans-serif, system-ui;
-  margin: 0;
-  padding: 0;
+/* Layout Geral da App */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #121212;
+  color: #fff;
+  position: relative;
   overflow-x: hidden;
 }
 
-button {
+/* Checkbox invisível para controlo do menu mobile */
+.sidebar-toggle-checkbox {
+  display: none;
+}
+
+/* Sidebar de Navegação (Desktop) */
+.app-sidebar {
+  width: 240px;
+  background: #191926;
+  border-right: 1px solid #2a2a3a;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  color: #ff9900;
+  font-size: 18px;
+  margin-bottom: 20px;
+  margin-top: 0;
+}
+
+.sidebar-section-title {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  letter-spacing: 1px;
+}
+
+.sidebar-section-title.admin-title {
+  margin-top: 15px;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #fff;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  text-align: left;
+  font-weight: bold;
   cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s ease-in-out;
+  width: 100%;
 }
 
-button:disabled {
-  opacity: 0.65;
-  cursor: not-allowed !important;
-}
-
-input, select {
-  font-family: inherit;
-}
-
-/* Scrollbar personalizada */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #121212;
-}
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
+.nav-btn.active {
   background: #ff9900;
+  color: #000;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid #2a2a3a;
+}
+
+.logout-btn {
+  width: 100%;
+  background: #ff4d4d;
+  color: #fff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Conteúdo Principal */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-header {
+  height: 70px;
+  background: #191926;
+  border-bottom: 1px solid #2a2a3a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px;
+  box-sizing: border-box;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ff9900;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.coin-badge {
+  background: #222233;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #333;
+  font-size: 14px;
+}
+
+.user-name {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.app-content-view {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Botão Hambúrguer (Oculto em Desktop) */
+.hamburger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.hamburger-btn span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: #ff9900;
+  border-radius: 2px;
+}
+
+.menu-overlay {
+  display: none;
+}
+
+/* Responsividade e Comportamento do Menu Hambúrguer para Ecrãs Pequenos (Tablets e Telemóveis) */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 15px;
+  }
+
+  .hamburger-btn {
+    display: flex !important;
+  }
+
+  .app-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: -260px;
+    height: 100vh;
+    z-index: 1000;
+    transition: left 0.3s ease-in-out;
+    box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Quando o input checkbox está selecionado, a sidebar desliza para dentro do ecrã */
+  .sidebar-toggle-checkbox:checked ~ .app-sidebar {
+    left: 0 !important;
+  }
+
+  .menu-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+  }
+
+  /* Exibe o fundo escuro e fecha ao clicar fora quando ativo */
+  .sidebar-toggle-checkbox:checked ~ .menu-overlay {
+    display: block !important;
+  }
 }
