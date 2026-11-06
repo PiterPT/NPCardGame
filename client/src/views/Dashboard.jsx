@@ -49,10 +49,10 @@ export default function Dashboard({ user, setCurrentView }) {
         <div className="xp-container">
           <div className="xp-info">
             <span>Experiência da Conta</span>
-            <span>2.400 / 3.000 XP (80%)</span>
+            <span>{user.xp || 0} / {user.xp_required || 3000} XP ({Math.round((user.xp || 0) / (user.xp_required || 3000) * 100)}%)</span>
           </div>
           <div className="xp-bar-bg">
-            <div className="xp-bar-fill" style={{ width: '80%' }}></div>
+            <div className="xp-bar-fill" style={{ width: `${Math.min(100, (user.xp || 0) / (user.xp_required || 3000) * 100)}%` }}></div>
           </div>
         </div>
       </div>

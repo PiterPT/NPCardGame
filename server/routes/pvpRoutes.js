@@ -236,11 +236,53 @@ router.get('/pvp/user/:id', async (req, res) => {
 
 // GET /api/pvp/ranking?limit=500&offset=0
 // MODIFICADO: Exclui utilizadores que não têm cartas no inventário OU não têm deck de defesa guardado
+// ==========================================
+// 2. RANKING COMPLETO (ordenado por posicao)
+// ==========================================
+
+// GET /api/pvp/ranking?limit=500&offset=0
+// Só mostra o player se ele tiver pelo menos 1 carta e deck (ou atribui automático se tiver cartas)
 router.get('/pvp/ranking', async (req, res) => {
   const limit = Math.min(toInt(req.query.limit) || 500, 1000);
   const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
+  
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // 1. Opcional/Automático: Verificar utilizadores no ranking que têm cartas no inventário 
+    // mas não têm deck de defesa configurado. Se tiverem >= 1 carta, geramos o deck automático para eles entrarem.
+    const usersSemDeckComCartas = await client.query(
+      `SELECT DISTINCT i.id_user 
+       FROM inventario i
+       JOIN pvp_ranking r ON r.id_user = i.id_user
+       WHERE NOT EXISTS (
+         SELECT 1 FROM pvp_defense d WHERE d.id_user = i.id_user
+       )`
+    );
+
+    for (const row of usersSemDeckComCartas.rows) {
+      const userId = row.id_user;
+      const inventoryCards = await getInventoryCards(client, userId);
+      
+      if (inventoryCards.length > 0) {
+        // Baralha e seleciona até MAX_DECK cartas para criar o deck de defesa automático
+        const shuffled = [...inventoryCards].sort(() => 0.5 - Math.random());
+        const randomCards = shuffled.slice(0, MAX_DECK);
+
+        for (const card of randomCards) {
+          await client.query(
+            'INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)',
+            [userId, card.id_card]
+          );
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // 2. Busca o ranking final filtrando apenas quem tem cartas no inventário E tem deck de defesa
+    const result = await client.query(
       `SELECT r.rank, r.points, u.id_user, u.name,
               (SELECT COUNT(*)::int FROM pvp_battles b WHERE b.winner_id = u.id_user) AS wins,
               (SELECT COUNT(*)::int FROM pvp_battles b
@@ -257,10 +299,14 @@ router.get('/pvp/ranking', async (req, res) => {
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
+
     res.json(result.rows);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao buscar ranking:', err);
     res.status(500).json({ error: 'Erro ao carregar ranking.' });
+  } finally {
+    client.release();
   }
 });
 
