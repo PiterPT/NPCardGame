@@ -92,7 +92,7 @@ async function getDeck(db, userId) {
   return r.rows;
 }
 
-// NOVO HELPER: Obtém todas as cartas disponíveis no inventário de um utilizador para gerar deck automático se necessário
+// Cartas do inventario de um jogador (sem imagens). Usado para o deck automatico do defensor.
 async function getInventoryCards(db, userId) {
   const r = await db.query(
     `SELECT c.*, cm.classe FROM inventario i
@@ -103,6 +103,12 @@ async function getInventoryCards(db, userId) {
   );
   return r.rows;
 }
+
+// Deck automatico: as MAX_DECK cartas mais fortes (determinista, nunca aleatorio). Nao e gravado.
+const autoDeck = (cards) =>
+  [...cards]
+    .sort((a, b) => (b.vida + b.tai + b.nin) - (a.vida + a.tai + a.nin) || a.id_card - b.id_card)
+    .slice(0, MAX_DECK);
 
 async function getStats(db, userId) {
   const r = await db.query(
@@ -235,54 +241,11 @@ router.get('/pvp/user/:id', async (req, res) => {
 // ==========================================
 
 // GET /api/pvp/ranking?limit=500&offset=0
-// MODIFICADO: Exclui utilizadores que não têm cartas no inventário OU não têm deck de defesa guardado
-// ==========================================
-// 2. RANKING COMPLETO (ordenado por posicao)
-// ==========================================
-
-// GET /api/pvp/ranking?limit=500&offset=0
-// Só mostra o player se ele tiver pelo menos 1 carta e deck (ou atribui automático se tiver cartas)
 router.get('/pvp/ranking', async (req, res) => {
   const limit = Math.min(toInt(req.query.limit) || 500, 1000);
   const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
-  
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    // 1. Opcional/Automático: Verificar utilizadores no ranking que têm cartas no inventário 
-    // mas não têm deck de defesa configurado. Se tiverem >= 1 carta, geramos o deck automático para eles entrarem.
-    const usersSemDeckComCartas = await client.query(
-      `SELECT DISTINCT i.id_user 
-       FROM inventario i
-       JOIN pvp_ranking r ON r.id_user = i.id_user
-       WHERE NOT EXISTS (
-         SELECT 1 FROM pvp_defense d WHERE d.id_user = i.id_user
-       )`
-    );
-
-    for (const row of usersSemDeckComCartas.rows) {
-      const userId = row.id_user;
-      const inventoryCards = await getInventoryCards(client, userId);
-      
-      if (inventoryCards.length > 0) {
-        // Baralha e seleciona até MAX_DECK cartas para criar o deck de defesa automático
-        const shuffled = [...inventoryCards].sort(() => 0.5 - Math.random());
-        const randomCards = shuffled.slice(0, MAX_DECK);
-
-        for (const card of randomCards) {
-          await client.query(
-            'INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)',
-            [userId, card.id_card]
-          );
-        }
-      }
-    }
-
-    await client.query('COMMIT');
-
-    // 2. Busca o ranking final filtrando apenas quem tem cartas no inventário E tem deck de defesa
-    const result = await client.query(
+    const result = await pool.query(
       `SELECT r.rank, r.points, u.id_user, u.name,
               (SELECT COUNT(*)::int FROM pvp_battles b WHERE b.winner_id = u.id_user) AS wins,
               (SELECT COUNT(*)::int FROM pvp_battles b
@@ -290,23 +253,14 @@ router.get('/pvp/ranking', async (req, res) => {
                   AND b.winner_id <> u.id_user) AS losses
        FROM pvp_ranking r
        JOIN users u ON u.id_user = r.id_user
-       WHERE EXISTS (
-         SELECT 1 FROM inventario i WHERE i.id_user = u.id_user
-       ) AND EXISTS (
-         SELECT 1 FROM pvp_defense d WHERE d.id_user = u.id_user
-       )
        ORDER BY r.rank ASC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
-
     res.json(result.rows);
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao buscar ranking:', err);
     res.status(500).json({ error: 'Erro ao carregar ranking.' });
-  } finally {
-    client.release();
   }
 });
 
@@ -355,33 +309,14 @@ router.post('/pvp/battle', async (req, res) => {
       throw new HttpError(409, 'Tens de guardar um deck antes de desafiar.');
     }
 
-    // VERIFICAÇÃO DO DECK DE DEFESA DO DEFENSOR
-    let defenderCardsRaw = await getDeck(client, defenderId);
-    
-    if (defenderCardsRaw.length === 0) {
-      // O defensor não tem deck de defesa configurado. Vamos verificar se ele tem cartas no inventário.
-      const inventoryCards = await getInventoryCards(client, defenderId);
-      
-      if (inventoryCards.length === 0) {
-        throw new HttpError(409, 'O adversário não possui cartas no inventário para batalhar.');
-      }
-
-      // Gera um deck aleatório baralhando as cartas do inventário e pegando até MAX_DECK cartas
-      const shuffled = [...inventoryCards].sort(() => 0.5 - Math.random());
-      const randomCards = shuffled.slice(0, MAX_DECK);
-
-      // Opcional: Grava este deck gerado automaticamente na tabela pvp_defense para ficar como o deck provisório dele
-      for (const card of randomCards) {
-        await client.query(
-          'INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)',
-          [defenderId, card.id_card]
-        );
-      }
-
-      defenderCardsRaw = randomCards;
+    // Defensor sem deck guardado: defende com as suas cartas mais fortes (nada e gravado nem escolhido ao acaso).
+    let defenderCards = (await getDeck(client, defenderId)).map(cardView);
+    if (defenderCards.length === 0) {
+      defenderCards = autoDeck((await getInventoryCards(client, defenderId)).map(cardView));
     }
-
-    const defenderCards = defenderCardsRaw.map(cardView);
+    if (defenderCards.length === 0) {
+      throw new HttpError(409, 'O adversário não tem cartas para defender a posição.');
+    }
 
     const attackerPower = totalPower(attackerCards);
     const defenderPower = totalPower(defenderCards);
