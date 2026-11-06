@@ -3,27 +3,149 @@ const router = express.Router();
 const pool = require('../index'); // Pool do PostgreSQL
 
 // ==========================================
-// 1. EQUIPA DE DEFESA DO JOGADOR
+// CONFIGURACAO PvP (valores A CONFIRMAR)
+// ==========================================
+const POINTS_WIN = parseInt(process.env.PVP_POINTS_WIN || '20', 10);   // pontos ganhos pelo vencedor
+const POINTS_LOSS = parseInt(process.env.PVP_POINTS_LOSS || '10', 10); // pontos perdidos pelo derrotado (minimo 0)
+const MAX_DECK = 5;                    // limite ja existente no codigo
+const INITIAL_POINTS = 1000;           // valor inicial ja existente no codigo
+const RANK_LOCK_KEY = 782001;          // advisory lock: serializa qualquer alteracao de posicoes
+const CARD_OWNER_COLUMN = 'id_user';   // A CONFIRMAR: coluna de cards que indica o dono da carta
+
+// ==========================================
+// HELPERS
+// ==========================================
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const toInt = (v) => {
+  const n = Number.parseInt(v, 10);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const cardView = (c) => ({
+  id_card: c.id_card,
+  name: c.name,
+  vida: num(c.vidastatus ?? c.vida),
+  tai: num(c.taistatus ?? c.tai),
+  nin: num(c.chakrastatus ?? c.nin),
+  image_url: c.image_url ?? null,
+  classe: c.classe ?? null
+});
+// Mesmo calculo de poder que ja existia: vida + taijutsu + ninjutsu.
+const totalPower = (cards) => cards.reduce((acc, c) => acc + c.vida + c.tai + c.nin, 0);
+
+const sendError = (res, err, fallback) => {
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  console.error(fallback, err);
+  return res.status(500).json({ error: fallback });
+};
+
+// Garante que o jogador tem posicao no ranking (entra no ultimo lugar). Requer lock ativo.
+async function ensureRanking(client, userId) {
+  const user = await client.query('SELECT name FROM users WHERE id_user = $1', [userId]);
+  if (user.rows.length === 0) throw new HttpError(404, 'Jogador não encontrado.');
+
+  let r = await client.query('SELECT rank, points FROM pvp_ranking WHERE id_user = $1', [userId]);
+  if (r.rows.length === 0) {
+    r = await client.query(
+      `INSERT INTO pvp_ranking (id_user, points, rank)
+       VALUES ($1, $2, (SELECT COALESCE(MAX(rank), 0) + 1 FROM pvp_ranking))
+       RETURNING rank, points`,
+      [userId, INITIAL_POINTS]
+    );
+  }
+  return { rank: r.rows[0].rank, points: r.rows[0].points, name: user.rows[0].name };
+}
+
+async function getDeck(db, userId) {
+  const r = await db.query(
+    `SELECT c.*, cm.image_url, cm.classe FROM pvp_defense d
+     JOIN cards c ON d.id_card = c.id_card
+     LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+     WHERE d.id_user = $1
+     ORDER BY d.id_defense`,
+    [userId]
+  );
+  return r.rows;
+}
+
+async function getStats(db, userId) {
+  const r = await db.query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE winner_id = $1)::int AS wins,
+            COUNT(*) FILTER (WHERE winner_id <> $1)::int AS losses
+     FROM pvp_battles WHERE attacker_id = $1 OR defender_id = $1`,
+    [userId]
+  );
+  const s = r.rows[0];
+  return { ...s, winRate: s.total > 0 ? Math.round((s.wins / s.total) * 100) : 0 };
+}
+
+const formatBattle = (r) => ({
+  id: r.id_battle,
+  createdAt: r.created_at,
+  winnerId: r.winner_id,
+  attacker: {
+    id: r.attacker_id,
+    name: r.attacker_name,
+    rankBefore: r.attacker_rank_before,
+    rankAfter: r.attacker_rank_after,
+    pointsDelta: r.attacker_points_delta,
+    power: r.attacker_power,
+    cards: r.attacker_cards
+  },
+  defender: {
+    id: r.defender_id,
+    name: r.defender_name,
+    rankBefore: r.defender_rank_before,
+    rankAfter: r.defender_rank_after,
+    pointsDelta: r.defender_points_delta,
+    power: r.defender_power,
+    cards: r.defender_cards
+  }
+});
+
+const BATTLE_SELECT = `
+  SELECT b.*, ua.name AS attacker_name, ud.name AS defender_name
+  FROM pvp_battles b
+  JOIN users ua ON ua.id_user = b.attacker_id
+  JOIN users ud ON ud.id_user = b.defender_id`;
+
+// ==========================================
+// 1. DECK DE BATALHA (tabela pvp_defense ja existente)
 // ==========================================
 
-// Guardar/Atualizar equipa de defesa (máx 5 cartas)
-// Guardar/Atualizar equipa de defesa (máx 5 cartas)
+// Guardar/Atualizar deck (max 5 cartas)
 router.post('/pvp/defense', async (req, res) => {
-  const { userId, cardIds } = req.body;
-  
-  if (!userId || !cardIds || !Array.isArray(cardIds)) {
+  const userId = toInt(req.body.userId);
+  const { cardIds } = req.body;
+
+  if (!userId || !Array.isArray(cardIds)) {
     return res.status(400).json({ error: 'Dados inválidos (userId ou cardIds ausentes).' });
   }
-
-  if (cardIds.length > 5) {
-    return res.status(400).json({ error: 'A equipa de defesa pode ter no máximo 5 cartas.' });
+  const ids = cardIds.map(toInt);
+  if (ids.some((id) => id === null)) {
+    return res.status(400).json({ error: 'IDs de cartas inválidos.' });
+  }
+  if (new Set(ids).size !== ids.length) {
+    return res.status(400).json({ error: 'O deck não pode ter cartas repetidas.' });
+  }
+  if (ids.length > MAX_DECK) {
+    return res.status(400).json({ error: `O deck pode ter no máximo ${MAX_DECK} cartas.` });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Assegura que a tabela existe antes de operar
     await client.query(`
       CREATE TABLE IF NOT EXISTS pvp_defense (
         id_defense SERIAL PRIMARY KEY,
@@ -32,74 +154,75 @@ router.post('/pvp/defense', async (req, res) => {
       )
     `);
 
-    // Remove a defesa anterior do utilizador
-    await client.query('DELETE FROM pvp_defense WHERE id_user = $1', [userId]);
-
-    // Insere as novas cartas de defesa
-    for (const cardId of cardIds) {
-      await client.query(
-        'INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)',
-        [userId, parseInt(cardId, 10)]
+    // Apenas cartas do proprio jogador.
+    if (ids.length > 0) {
+      const owned = await client.query(
+        `SELECT COUNT(*)::int AS n FROM cards WHERE id_card = ANY($1::int[]) AND ${CARD_OWNER_COLUMN} = $2`,
+        [ids, userId]
       );
+      if (owned.rows[0].n !== ids.length) {
+        throw new HttpError(403, 'Só podes usar cartas que te pertencem.');
+      }
+    }
+
+    await client.query('DELETE FROM pvp_defense WHERE id_user = $1', [userId]);
+    for (const cardId of ids) {
+      await client.query('INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)', [userId, cardId]);
     }
 
     await client.query('COMMIT');
-    client.release();
-    
-    return res.json({ success: true, message: 'Equipa de defesa guardada com sucesso!' });
+    return res.json({ success: true, message: 'Deck guardado com sucesso!' });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
+    return sendError(res, err, 'Erro interno ao guardar o deck.');
+  } finally {
     client.release();
-    console.error('Erro detalhado ao guardar defesa:', err);
-    return res.status(500).json({ error: err.message || 'Erro interno ao guardar equipa de defesa.' });
   }
 });
-// Obter equipa de defesa e ranking do utilizador
+
+// Dados do jogador: posicao, pontos, deck e estatisticas
 router.get('/pvp/user/:id', async (req, res) => {
-  const userId = req.params.id;
+  const userId = toInt(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+
+  const client = await pool.connect();
   try {
-    const rankRes = await pool.query('SELECT rank, points FROM pvp_ranking WHERE id_user = $1', [userId]);
-    const defenseRes = await pool.query(
-      `SELECT c.*, cm.image_url, cm.classe FROM pvp_defense d
-       JOIN cards c ON d.id_card = c.id_card
-       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
-       WHERE d.id_user = $1`,
-      [userId]
-    );
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)', [RANK_LOCK_KEY]);
+    const me = await ensureRanking(client, userId);
+    await client.query('COMMIT');
 
-    let rankData = rankRes.rows[0];
-    if (!rankData) {
-      // Se não estiver no ranking, insere com pontuação inicial
-      const insertRank = await pool.query(
-        'INSERT INTO pvp_ranking (id_user, points, rank) VALUES ($1, 1000, 999) RETURNING rank, points',
-        [userId]
-      );
-      rankData = insertRank.rows[0];
-    }
-
-    res.json({
-      rank: rankData.rank,
-      points: rankData.points,
-      defenseCards: defenseRes.rows
-    });
+    const defenseCards = await getDeck(client, userId);
+    const stats = await getStats(client, userId);
+    res.json({ rank: me.rank, points: me.points, defenseCards, stats });
   } catch (err) {
-    console.error('Erro ao buscar dados pvp:', err);
-    res.status(500).json({ error: 'Erro ao carregar dados de PvP.' });
+    await client.query('ROLLBACK').catch(() => {});
+    sendError(res, err, 'Erro ao carregar dados de PvP.');
+  } finally {
+    client.release();
   }
 });
 
 // ==========================================
-// 2. RANKING E TOP 5
+// 2. RANKING COMPLETO (ordenado por posicao)
 // ==========================================
 
-// GET /api/pvp/ranking
+// GET /api/pvp/ranking?limit=500&offset=0
 router.get('/pvp/ranking', async (req, res) => {
+  const limit = Math.min(toInt(req.query.limit) || 500, 1000);
+  const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
   try {
     const result = await pool.query(
-      `SELECT COALESCE(r.rank, 999) as rank, COALESCE(r.points, 1000) as points, u.id_user, u.name 
-       FROM users u
-       LEFT JOIN pvp_ranking r ON u.id_user = r.id_user
-       ORDER BY COALESCE(r.points, 1000) DESC LIMIT 20`
+      `SELECT r.rank, r.points, u.id_user, u.name,
+              (SELECT COUNT(*)::int FROM pvp_battles b WHERE b.winner_id = u.id_user) AS wins,
+              (SELECT COUNT(*)::int FROM pvp_battles b
+                WHERE (b.attacker_id = u.id_user OR b.defender_id = u.id_user)
+                  AND b.winner_id <> u.id_user) AS losses
+       FROM pvp_ranking r
+       JOIN users u ON u.id_user = r.id_user
+       ORDER BY r.rank ASC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
     );
     res.json(result.rows);
   } catch (err) {
@@ -109,66 +232,180 @@ router.get('/pvp/ranking', async (req, res) => {
 });
 
 // ==========================================
-// 3. COMBATE PVP (Desafiar o oponente acima)
+// 3. BATALHA 1x1 (so contra o jogador imediatamente acima)
 // ==========================================
 
 router.post('/pvp/battle', async (req, res) => {
-  const { attackerId, defenderId, attackerCardIds } = req.body;
+  const attackerId = toInt(req.body.attackerId);
+  const defenderId = toInt(req.body.defenderId);
 
-  if (!attackerId || !defenderId || !attackerCardIds || attackerCardIds.length === 0) {
+  if (!attackerId || !defenderId) {
     return res.status(400).json({ error: 'Dados de combate incompletos.' });
+  }
+  if (attackerId === defenderId) {
+    return res.status(400).json({ error: 'Não podes desafiar-te a ti próprio.' });
   }
 
   const client = await pool.connect();
   try {
-    // 1. Buscar status das cartas do atacante
-    const attackerCardsRes = await client.query(
-      `SELECT * FROM cards WHERE id_card = ANY($1::int[])`,
-      [attackerCardIds]
-    );
-    const attackerCards = attackerCardsRes.rows;
+    await client.query('BEGIN');
+    // Serializa todas as alteracoes de posicoes: dois desafios nunca correm em simultaneo.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [RANK_LOCK_KEY]);
 
-    // 2. Buscar cartas de defesa do oponente
-    const defenderCardsRes = await client.query(
-      `SELECT c.* FROM pvp_defense d
-       JOIN cards c ON d.id_card = c.id_card
-       WHERE d.id_user = $1`,
-      [defenderId]
-    );
-    let defenderCards = defenderCardsRes.rows;
+    const att = await ensureRanking(client, attackerId);
+    if (att.rank <= 1) {
+      throw new HttpError(409, 'O primeiro classificado não pode desafiar ninguém.');
+    }
 
-    // Se o defensor não tiver equipa de defesa montada, gera cartas automáticas base
+    const above = await client.query(
+      `SELECT r.id_user, r.rank, r.points, u.name
+       FROM pvp_ranking r JOIN users u ON u.id_user = r.id_user
+       WHERE r.rank = $1`,
+      [att.rank - 1]
+    );
+    if (above.rows.length === 0) {
+      throw new HttpError(409, 'Ranking inconsistente: não existe jogador na posição acima. Contacta um administrador.');
+    }
+    const def = above.rows[0];
+    if (def.id_user !== defenderId) {
+      throw new HttpError(409, `Só podes desafiar o jogador imediatamente acima de ti (#${att.rank - 1}).`);
+    }
+
+    const attackerCards = (await getDeck(client, attackerId)).map(cardView);
+    const defenderCards = (await getDeck(client, defenderId)).map(cardView);
+    if (attackerCards.length === 0) {
+      throw new HttpError(409, 'Tens de guardar um deck antes de desafiar.');
+    }
     if (defenderCards.length === 0) {
-      defenderCards = [{ name: 'Ninja Renegado', vidastatus: 800, taistatus: 100, chakrastatus: 100 }];
+      throw new HttpError(409, 'O adversário ainda não guardou um deck de batalha.');
     }
 
-    // 3. Cálculo de Poder Total baseado nos Status (Vida + Taijutsu + Ninjutsu)
-    const calculatePower = (cards) => {
-      return cards.reduce((acc, c) => {
-        return acc + (parseInt(c.vidastatus || c.vida || 500) + parseInt(c.taistatus || c.tai || 50) + parseInt(c.chakrastatus || c.nin || 50));
-      }, 0);
-    };
+    const attackerPower = totalPower(attackerCards);
+    const defenderPower = totalPower(defenderCards);
+    // Regra ja existente: em empate vence o atacante.
+    const attackerWins = attackerPower >= defenderPower;
 
-    const attackerPower = calculatePower(attackerCards);
-    const defenderPower = calculatePower(defenderCards);
+    const attDelta = attackerWins ? POINTS_WIN : -Math.min(POINTS_LOSS, att.points);
+    const defDelta = attackerWins ? -Math.min(POINTS_LOSS, def.points) : POINTS_WIN;
+    await client.query('UPDATE pvp_ranking SET points = points + $1 WHERE id_user = $2', [attDelta, attackerId]);
+    await client.query('UPDATE pvp_ranking SET points = points + $1 WHERE id_user = $2', [defDelta, defenderId]);
 
-    // Simulação de combate com base nos status reais
-    const playerWins = attackerPower >= defenderPower;
-
-    if (playerWins) {
-      // Trocar de posição no ranking se aplicável
-      res.json({ success: true, winner: 'attacker', message: 'Vitória gloriosa na Arena! Subiste no ranking.' });
-    } else {
-      res.json({ success: true, winner: 'defender', message: 'Foste derrotado pelo oponente!' });
+    let attackerRankAfter = att.rank;
+    let defenderRankAfter = def.rank;
+    if (attackerWins) {
+      // Troca de posicoes (via valor temporario para respeitar a unicidade de rank).
+      attackerRankAfter = def.rank;
+      defenderRankAfter = att.rank;
+      await client.query('UPDATE pvp_ranking SET rank = -1 WHERE id_user = $1', [attackerId]);
+      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [att.rank, defenderId]);
+      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [def.rank, attackerId]);
     }
+
+    const ins = await client.query(
+      `INSERT INTO pvp_battles
+        (attacker_id, defender_id, winner_id,
+         attacker_rank_before, attacker_rank_after, defender_rank_before, defender_rank_after,
+         attacker_points_delta, defender_points_delta, attacker_power, defender_power,
+         attacker_cards, defender_cards)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb)
+       RETURNING id_battle`,
+      [
+        attackerId, defenderId, attackerWins ? attackerId : defenderId,
+        att.rank, attackerRankAfter, def.rank, defenderRankAfter,
+        attDelta, defDelta, attackerPower, defenderPower,
+        JSON.stringify(attackerCards), JSON.stringify(defenderCards)
+      ]
+    );
+    const battleId = ins.rows[0].id_battle;
+
+    await client.query('INSERT INTO pvp_notifications (id_user, id_battle) VALUES ($1, $2)', [defenderId, battleId]);
+
+    const full = await client.query(`${BATTLE_SELECT} WHERE b.id_battle = $1`, [battleId]);
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      winner: attackerWins ? 'attacker' : 'defender',
+      message: attackerWins
+        ? `Vitória! Subiste para a posição #${attackerRankAfter}.`
+        : `Derrota. Manténs a posição #${att.rank}.`,
+      battle: formatBattle(full.rows[0])
+    });
   } catch (err) {
-    console.error('Erro na batalha PvP:', err);
-    res.status(500).json({ error: 'Erro ao processar batalha PvP.' });
+    await client.query('ROLLBACK').catch(() => {});
+    sendError(res, err, 'Erro ao processar batalha PvP.');
+  } finally {
+    client.release();
   }
 });
 
 // ==========================================
-// 4. MODO INFINITO (Farm de Ryos e Ondeando Inimigos)
+// 4. HISTORICO DE BATALHAS
+// ==========================================
+
+router.get('/pvp/history/:id', async (req, res) => {
+  const userId = toInt(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+  const limit = Math.min(toInt(req.query.limit) || 20, 50);
+  try {
+    const r = await pool.query(
+      `${BATTLE_SELECT}
+       WHERE b.attacker_id = $1 OR b.defender_id = $1
+       ORDER BY b.created_at DESC, b.id_battle DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+    res.json(r.rows.map(formatBattle));
+  } catch (err) {
+    console.error('Erro ao buscar histórico:', err);
+    res.status(500).json({ error: 'Erro ao carregar histórico.' });
+  }
+});
+
+// ==========================================
+// 5. NOTIFICACOES (apenas desafios/batalhas)
+// ==========================================
+
+router.get('/pvp/notifications/:id', async (req, res) => {
+  const userId = toInt(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+  try {
+    const r = await pool.query(
+      `SELECT n.id_notification, n.is_read, n.created_at, n.id_battle,
+              ua.name AS attacker_name, (b.winner_id = b.attacker_id) AS attacker_won
+       FROM pvp_notifications n
+       JOIN pvp_battles b ON b.id_battle = n.id_battle
+       JOIN users ua ON ua.id_user = b.attacker_id
+       WHERE n.id_user = $1
+       ORDER BY n.created_at DESC, n.id_notification DESC
+       LIMIT 30`,
+      [userId]
+    );
+    res.json({
+      unread: r.rows.filter((n) => !n.is_read).length,
+      notifications: r.rows
+    });
+  } catch (err) {
+    console.error('Erro ao buscar notificações:', err);
+    res.status(500).json({ error: 'Erro ao carregar notificações.' });
+  }
+});
+
+router.post('/pvp/notifications/:id/read', async (req, res) => {
+  const userId = toInt(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+  try {
+    await pool.query('UPDATE pvp_notifications SET is_read = TRUE WHERE id_user = $1 AND is_read = FALSE', [userId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro ao marcar notificações:', err);
+    res.status(500).json({ error: 'Erro ao atualizar notificações.' });
+  }
+});
+
+// ==========================================
+// 6. MODO INFINITO (Farm de Ryos e Ondeando Inimigos)
+//    -- Fora do ambito do PvP: mantido exatamente como estava --
 // ==========================================
 
 router.post('/infinite/reward', async (req, res) => {
