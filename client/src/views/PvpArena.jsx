@@ -3,6 +3,9 @@ import * as pvpCache from './pvpCache';
 
 const ORANGE = '#ff9900';
 const RED = '#ef4444';
+const API_BASE = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
+// As imagens vem de uma rota propria (com cache do navegador); o JSON so traz o caminho.
+const imgSrc = (u) => (u && u.startsWith('/') ? `${API_BASE}${u}` : u);
 const PANEL = { background: '#191926', padding: '20px', borderRadius: '10px', border: '1px solid #333' };
 
 // ---------- Cartao de resultado de batalha ----------
@@ -24,7 +27,7 @@ function PlayerResultCard({ side, isWinner }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         {(side.cards || []).map((c, i) => (
           <div key={`${c.id_card}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#1d1d2b', borderRadius: '6px', padding: '6px' }}>
-            {c.image_url && <img src={c.image_url} alt={c.name} style={{ width: '36px', height: '46px', objectFit: 'cover', borderRadius: '4px' }} />}
+            {c.image_url && <img src={imgSrc(c.image_url)} alt={c.name} style={{ width: '36px', height: '46px', objectFit: 'cover', borderRadius: '4px' }} />}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE }}>{c.name}</div>
               <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {c.vida} · ⚔️ {c.tai} · 🌀 {c.nin}</div>
@@ -122,14 +125,12 @@ export default function PvpArena({ user, setUser }) {
     });
 
   const loadInventory = (force = false) =>
-    pvpCache.load(userId, 'inventory', `${API_URL}/api/user/${userId}/profile`, {
+    pvpCache.load(userId, 'inventory', `${API_URL}/api/pvp/cards/${userId}`, {
       force,
       fingerprint: readCoins(),
       parse: (body) => {
-        if (!body || !Array.isArray(body.cards)) {
-          throw new Error(`a resposta não tem a lista "cards" (campos: ${body ? Object.keys(body).join(', ') : 'nenhum'})`);
-        }
-        return body.cards;
+        if (!Array.isArray(body)) throw new Error('a resposta não tem a lista de cartas');
+        return body;
       },
       onData: (cards) => {
         setInventory(cards);
@@ -363,7 +364,7 @@ export default function PvpArena({ user, setUser }) {
                   }}
                   style={{ background: isSelected ? '#2e1065' : '#121212', border: isSelected ? '2px solid #a855f7' : '1px solid #444', padding: '10px', borderRadius: '8px', textAlign: 'center', cursor: 'pointer' }}
                 >
-                  <img src={card.image_url} alt={card.name} style={{ width: '80px', height: '100px', objectFit: 'cover', borderRadius: '4px' }} />
+                  <img src={imgSrc(card.image_url)} alt={card.name} style={{ width: '80px', height: '100px', objectFit: 'cover', borderRadius: '4px' }} />
                   <div style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '5px', color: ORANGE }}>{card.name}</div>
                   <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
                 </div>

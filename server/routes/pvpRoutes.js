@@ -13,6 +13,8 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
 });
+// Sem este handler, um erro numa ligacao inativa (ex.: reinicio da BD) mata o processo Node.
+pool.on('error', (err) => console.error('Erro no pool PvP (ligacao inativa):', err.message));
 
 // ==========================================
 // CONFIGURACAO PvP (valores A CONFIRMAR)
@@ -48,7 +50,8 @@ const cardView = (c) => ({
   vida: num(c.vidastatus ?? c.vida),
   tai: num(c.taistatus ?? c.tai),
   nin: num(c.chakrastatus ?? c.nin),
-  image_url: c.image_url ?? null,
+  // Caminho curto para a rota de imagens (as imagens estao na BD como base64 de varios MB: nunca vao no JSON).
+  image_url: c.id_cardmodel ? `/api/pvp/card-image/${c.id_cardmodel}` : null,
   classe: c.classe ?? null
 });
 // Mesmo calculo de poder que ja existia: vida + taijutsu + ninjutsu.
@@ -79,7 +82,7 @@ async function ensureRanking(client, userId) {
 
 async function getDeck(db, userId) {
   const r = await db.query(
-    `SELECT c.*, cm.image_url, cm.classe FROM pvp_defense d
+    `SELECT c.*, cm.classe FROM pvp_defense d
      JOIN cards c ON d.id_card = c.id_card
      LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
      WHERE d.id_user = $1
@@ -204,7 +207,7 @@ router.get('/pvp/user/:id', async (req, res) => {
     const me = await ensureRanking(client, userId);
     await client.query('COMMIT');
 
-    const defenseCards = await getDeck(client, userId);
+    const defenseCards = (await getDeck(client, userId)).map(cardView);
     const stats = await getStats(client, userId);
     res.json({ rank: me.rank, points: me.points, defenseCards, stats });
   } catch (err) {
@@ -412,6 +415,57 @@ router.post('/pvp/notifications/:id/read', async (req, res) => {
   } catch (err) {
     console.error('Erro ao marcar notificações:', err);
     res.status(500).json({ error: 'Erro ao atualizar notificações.' });
+  }
+});
+
+// ==========================================
+// 5b. CARTAS DO JOGADOR (leve, sem imagens) E IMAGENS DAS CARTAS
+// ==========================================
+
+// Lista as cartas do inventario sem o campo de imagem (que pode ter varios MB em base64).
+router.get('/pvp/cards/:id', async (req, res) => {
+  const userId = toInt(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+  try {
+    const r = await pool.query(
+      `SELECT c.id_card, c.id_cardmodel, c.name, c.vidastatus, c.taistatus, c.chakrastatus, c.level, cm.classe
+       FROM inventario i
+       JOIN cards c ON i.id_card = c.id_card
+       LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard
+       WHERE i.id_user = $1
+       ORDER BY c.id_card`,
+      [userId]
+    );
+    res.json(r.rows.map((row) => ({ ...cardView(row), level: row.level ?? 1 })));
+  } catch (err) {
+    console.error('Erro ao listar cartas:', err);
+    res.status(500).json({ error: 'Erro ao carregar cartas.' });
+  }
+});
+
+// Serve a imagem de um modelo de carta como ficheiro (o navegador guarda-a em cache).
+router.get('/pvp/card-image/:id', async (req, res) => {
+  const id = toInt(req.params.id);
+  if (!id) return res.status(400).end();
+  try {
+    const r = await pool.query('SELECT image_url FROM cardmodel WHERE id_modelcard = $1', [id]);
+    const src = r.rows[0] && r.rows[0].image_url;
+    if (!src) return res.status(404).end();
+
+    const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is.exec(src);
+    if (m) {
+      res.set({
+        'Content-Type': m[1],
+        'Cache-Control': 'public, max-age=86400',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      });
+      return res.send(Buffer.from(m[2], 'base64'));
+    }
+    if (/^https?:\/\//i.test(src)) return res.redirect(302, src);
+    return res.status(404).end();
+  } catch (err) {
+    console.error('Erro ao servir imagem:', err);
+    res.status(500).end();
   }
 });
 
