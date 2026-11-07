@@ -608,4 +608,182 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
   }
 });
 
+// FM2: reinicia a run (posição) mantendo best_wave/ranking. Limite 2x/dia no servidor (BD).
+router.post('/infinite/reset', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Garante linha de progresso; FOR UPDATE serializa resets/claims concorrentes.
+    await client.query(
+      `INSERT INTO infinite_progress (id_user, max_wave) VALUES ($1, 0)
+       ON CONFLICT (id_user) DO NOTHING`,
+      [userId]
+    );
+    const prog = await client.query(
+      `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day,
+              CURRENT_DATE AS today,
+              CASE WHEN resets_day IS NULL OR resets_day <> CURRENT_DATE THEN 0 ELSE resets_today END AS effective_resets_today
+       FROM infinite_progress WHERE id_user = $1 FOR UPDATE`,
+      [userId]
+    );
+    if (prog.rows.length === 0) throw new Error('progresso ausente');
+
+    const row = prog.rows[0];
+    const effectiveResetsToday = row.effective_resets_today || 0;
+    const bestWave = row.best_wave || 0;
+    const lastClaim = row.last_claim_at || null;
+
+    if (effectiveResetsToday >= 2) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Já usaste os 2 reinícios de hoje. Tenta amanhã.',
+        resetsRemaining: 0
+      });
+    }
+
+    const resetsUsed = effectiveResetsToday + 1;
+    // Reset da run (max_wave) apenas; best_wave e last_claim_at (cooldown) mantêm-se.
+    const upd = await client.query(
+      `UPDATE infinite_progress
+       SET max_wave = 0, resets_today = $1, resets_day = CURRENT_DATE
+       WHERE id_user = $2
+       RETURNING max_wave, best_wave, resets_today, resets_day`,
+      [resetsUsed, userId]
+    );
+    if (upd.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Jogador não encontrado.' });
+    }
+
+    await client.query('COMMIT');
+
+    const out = upd.rows[0];
+    setInfiniteCache(userId, {
+      max_wave: 0,
+      best_wave: bestWave,
+      last_claim_at: lastClaim,
+      resets_today: out.resets_today,
+      resets_day: out.resets_day
+    });
+
+    return res.json({
+      success: true,
+      maxWave: 0,
+      bestWave,
+      resetsUsed,
+      resetsRemaining: 2 - resetsUsed
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao reiniciar modo infinito:', err);
+    return res.status(500).json({ error: 'Erro ao reiniciar modo infinito.' });
+  } finally {
+    client.release();
+  }
+});
+
+// FM2: ranking do modo infinito (recorde best_wave). Apenas dados públicos.
+router.get('/infinite/ranking', requireAuth, async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const offset = (page - 1) * limit;
+  try {
+    const totalRes = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM infinite_progress WHERE best_wave > 0'
+    );
+    const total = totalRes.rows[0] ? totalRes.rows[0].total : 0;
+
+    const r = await pool.query(
+      `SELECT ip.best_wave, ip.max_wave, u.id_user, u.name
+       FROM infinite_progress ip
+       JOIN users u ON u.id_user = ip.id_user
+       WHERE ip.best_wave > 0
+       ORDER BY ip.best_wave DESC, ip.max_wave DESC, ip.id_user ASC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    const entries = r.rows.map((row, index) => ({
+      rank: offset + index + 1,
+      id_user: row.id_user,
+      name: row.name,
+      bestWave: row.best_wave
+    }));
+
+    res.json({
+      entries,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      limit
+    });
+  } catch (err) {
+    console.error('Erro ao buscar ranking infinito:', err);
+    res.status(500).json({ error: 'Erro ao carregar ranking do modo infinito.' });
+  }
+});
+
+// FM2/FM3: estado atual do utilizador no modo infinito (leitura; BD como fonte de verdade).
+router.get('/infinite/progress', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const cached = getInfiniteCache(userId);
+    let base;
+    if (cached) {
+      // Cache hit: calcula resets efetivos com base no CURRENT_DATE do BD (evita drift de fuso).
+      const eff = await pool.query(
+        `SELECT CASE WHEN $1::date IS NULL OR $1::date <> CURRENT_DATE THEN 0 ELSE $2::int END AS effective_resets_today`,
+        [cached.resets_day || null, cached.resets_today || 0]
+      );
+      const effectiveResetsToday = (eff.rows[0] && eff.rows[0].effective_resets_today) || 0;
+      base = {
+        max_wave: cached.max_wave || 0,
+        best_wave: cached.best_wave || 0,
+        effective_resets_today: effectiveResetsToday
+      };
+    } else {
+      // Cache miss: lê BD (sem mutação). Garante linha para utilizadores novos.
+      await pool.query(
+        `INSERT INTO infinite_progress (id_user, max_wave) VALUES ($1, 0)
+         ON CONFLICT (id_user) DO NOTHING`,
+        [userId]
+      );
+      const r = await pool.query(
+        `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day,
+                CASE WHEN resets_day IS NULL OR resets_day <> CURRENT_DATE THEN 0 ELSE resets_today END AS effective_resets_today
+         FROM infinite_progress WHERE id_user = $1`,
+        [userId]
+      );
+      if (r.rows.length === 0) {
+        return res.json({ maxWave: 0, bestWave: 0, resetsToday: 0, resetsRemaining: 2 });
+      }
+      const row = r.rows[0];
+      base = {
+        max_wave: row.max_wave || 0,
+        best_wave: row.best_wave || 0,
+        effective_resets_today: row.effective_resets_today || 0
+      };
+      setInfiniteCache(userId, {
+        max_wave: row.max_wave || 0,
+        best_wave: row.best_wave || 0,
+        last_claim_at: row.last_claim_at || null,
+        resets_today: row.resets_today || 0,
+        resets_day: row.resets_day || null
+      });
+    }
+
+    return res.json({
+      maxWave: base.max_wave,
+      bestWave: base.best_wave,
+      resetsToday: base.effective_resets_today,
+      resetsRemaining: Math.max(0, 2 - base.effective_resets_today)
+    });
+  } catch (err) {
+    console.error('Erro ao carregar progresso do modo infinito:', err);
+    return res.status(500).json({ error: 'Erro ao carregar progresso do modo infinito.' });
+  }
+});
+
 module.exports = router;
