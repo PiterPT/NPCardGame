@@ -105,11 +105,29 @@ async function getInventoryCards(db, userId) {
   return r.rows;
 }
 
+// Extrai stats efetivos de forma robusta (aceita row bruta vidastatus/taistatus/chakrastatus ou objeto normalizado vida/tai/nin; strings/nulos/ausentes → 0). R1-FIX-A.
+const deckStats = (c) => {
+  const src = c && typeof c === 'object' ? c : {};
+  return {
+    vida: num(src.vidastatus ?? src.vida),
+    tai: num(src.taistatus ?? src.tai),
+    nin: num(src.chakrastatus ?? src.nin ?? src.chakra),
+    id: Number.isInteger(src.id_card) ? src.id_card : (Number.parseInt(src.id_card, 10) || 0)
+  };
+};
+const deckPower = (c) => {
+  const s = deckStats(c);
+  return s.vida + s.tai + s.nin;
+};
+
 // Deck automatico: as MAX_DECK cartas mais fortes (determinista, nunca aleatorio). Nao e gravado.
+// Critério de seleção inalterado (poder total = vida+tai+nin). Robusto a formatos legados/ranks parciais/ausentes.
 const autoDeck = (cards) =>
-  [...cards]
-    .sort((a, b) => (b.vida + b.tai + b.nin) - (a.vida + a.tai + a.nin) || a.id_card - b.id_card)
-    .slice(0, MAX_DECK);
+  [...(Array.isArray(cards) ? cards : [])]
+    .map((c) => ({ c, p: deckPower(c), id: deckStats(c).id }))
+    .sort((a, b) => b.p - a.p || a.id - b.id)
+    .slice(0, MAX_DECK)
+    .map((x) => x.c);
 
 async function getStats(db, userId) {
   const r = await db.query(
