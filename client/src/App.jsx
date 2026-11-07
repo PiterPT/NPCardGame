@@ -135,7 +135,10 @@ export default function App() {
 
           <div className="header-right">
             <span className="coin-badge">
-              💰 <strong>{user.coins}</strong> Ryo
+              💰 <strong>{user.coins ?? 0}</strong> Ryo
+            </span>
+            <span className="coin-badge" title="Diamantes">
+              💎 <strong>{user.diamonds ?? 0}</strong>
             </span>
             <span className="user-name">👤 <strong>{user.name}</strong></span>
           </div>

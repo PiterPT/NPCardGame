@@ -5,6 +5,7 @@ const ORANGE = '#ff9900';
 const RED = '#ef4444';
 const imgSrc = (u) => (u && u.startsWith('/') ? `${API_URL}${u}` : u);
 const PANEL = { background: '#191926', padding: '20px', borderRadius: '10px', border: '1px solid #333' };
+const INFINITE_COOLDOWN_MS = 20000;
 
 // ---------- Cartão de resultado de batalha ----------
 function PlayerResultCard({ side, isWinner }) {
@@ -56,6 +57,64 @@ function BattleResultModal({ battle, onClose }) {
   );
 }
 
+function buildEnemy(wave) {
+  // Preserva o estado inicial original da onda 1; ondas seguintes escalam de forma consistente.
+  if (wave === 1) {
+    return {
+      name: 'Bandido da Névoa',
+      vida: 600,
+      maxVida: 600,
+      tai: 80,
+      nin: 50
+    };
+  }
+  const maxVida = 600 + (wave * 150);
+  return {
+    name: `Ninja Renegado Nvl ${wave}`,
+    vida: maxVida,
+    maxVida,
+    tai: 80 + (wave * 30),
+    nin: 50 + (wave * 20)
+  };
+}
+
+function predictedReward(wave, bestWave) {
+  const isRecord = wave > (bestWave || 0);
+  const ryos = isRecord ? wave * 150 : Math.round(wave * 150 * 0.25);
+  const diamonds = isRecord ? Math.max(1, Math.floor(wave / 10)) : 0;
+  return { ryos, diamonds, isRecord };
+}
+
+function InlineNotice({ notice }) {
+  if (!notice || !notice.text) return null;
+  const isErr = notice.type === 'error';
+  return (
+    <div style={{
+      marginBottom: '12px',
+      padding: '10px 12px',
+      borderRadius: '8px',
+      fontSize: '13px',
+      background: isErr ? '#3b0d0d' : '#12351d',
+      border: `1px solid ${isErr ? RED : '#22c55e'}`,
+      color: isErr ? '#fca5a5' : '#86efac',
+      textAlign: 'left'
+    }}>
+      {notice.text}
+    </div>
+  );
+}
+
+function MiniCard({ card }) {
+  if (!card) return null;
+  return (
+    <div style={{ background: '#121212', border: '1px solid #333', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+      {card.image_url && <img src={imgSrc(card.image_url)} alt={card.name} style={{ width: '72px', height: '90px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />}
+      <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE, marginBottom: '2px' }}>{card.name}</div>
+      <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {card.vida} · ⚔️ {card.tai}{card.nin != null ? ` · 🌀 ${card.nin}` : ''}</div>
+    </div>
+  );
+}
+
 export default function PvpArena({ user, setUser }) {
   const userId = Number(user.id_user || user.id);
 
@@ -88,18 +147,24 @@ export default function PvpArena({ user, setUser }) {
   // Estados do Modo Infinito
   const [infiniteWave, setInfiniteWave] = useState(1);
   const [infiniteActive, setInfiniteActive] = useState(false);
-  const [enemyWaveCard, setEnemyWaveCard] = useState({ 
-    name: 'Bandido da Névoa', 
-    vida: 600, 
-    maxVida: 600, 
-    tai: 80, 
-    nin: 50 
-  });
-
-  // Estados do Auto-Farm e Combat Log
+  const [enemyWaveCard, setEnemyWaveCard] = useState(() => buildEnemy(1));
   const [autoMode, setAutoMode] = useState(false);
   const [isFighting, setIsFighting] = useState(false);
   const [battleLogs, setBattleLogs] = useState([]);
+  const [infMaxWave, setInfMaxWave] = useState(0);
+  const [infBestWave, setInfBestWave] = useState(0);
+  const [infResetsRemaining, setInfResetsRemaining] = useState(null);
+  const [infMessage, setInfMessage] = useState(null);
+  const [cooldownEndAt, setCooldownEndAt] = useState(0);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [infProgressLoaded, setInfProgressLoaded] = useState(false);
+  const [infRanking, setInfRanking] = useState([]);
+  const [infRankPage, setInfRankPage] = useState(1);
+  const [infRankPages, setInfRankPages] = useState(1);
+  const [infRankTotal, setInfRankTotal] = useState(0);
+  const [infRankLoading, setInfRankLoading] = useState(false);
+  const [infResetting, setInfResetting] = useState(false);
 
   const readCoins = () => {
     try { return JSON.parse(localStorage.getItem('user')).coins; } catch { return null; }
@@ -163,23 +228,72 @@ export default function PvpArena({ user, setUser }) {
       onError: (err) => console.error(err)
     });
 
+  const loadInfiniteProgress = async (force = false) => {
+    if (infProgressLoaded && !force) return;
+    try {
+      const res = await authFetch(`${API_URL}/api/infinite/progress`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao carregar progresso do infinito.');
+      setInfMaxWave(Number(data.maxWave || 0));
+      setInfBestWave(Number(data.bestWave || 0));
+      setInfResetsRemaining(data.resetsRemaining != null ? Number(data.resetsRemaining) : null);
+      setInfProgressLoaded(true);
+    } catch (err) {
+      setInfMessage({ type: 'error', text: `Não foi possível carregar o progresso: ${err.message}` });
+    }
+  };
+
+  const loadInfiniteRanking = async (page = 1) => {
+    setInfRankLoading(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/infinite/ranking?page=${page}&limit=10`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao carregar ranking do infinito.');
+      setInfRanking(Array.isArray(data.entries) ? data.entries : []);
+      setInfRankPage(Number(data.page || page));
+      setInfRankPages(Number(data.pages || 1));
+      setInfRankTotal(Number(data.total || 0));
+    } catch (err) {
+      setInfMessage({ type: 'error', text: `Não foi possível carregar o ranking: ${err.message}` });
+    } finally {
+      setInfRankLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadNotifications();
     if (tab === 'ranking') { loadRanking(); loadUser(); }
     if (tab === 'defense') { loadUser(); loadInventory(); }
     if (tab === 'history') { loadHistory(); loadUser(); }
+    if (tab === 'infinite') { loadUser(); loadInfiniteProgress(); loadInfiniteRanking(infRankPage); }
   }, [tab]);
 
-  // Loop do Modo Automático
+  // Contagem decrescente do cooldown
+  useEffect(() => {
+    if (!cooldownEndAt) {
+      setCooldownLeft(0);
+      return undefined;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((cooldownEndAt - Date.now()) / 1000));
+      setCooldownLeft(left);
+      if (left <= 0) setCooldownEndAt(0);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [cooldownEndAt]);
+
+  // Loop do Modo Automático (respeita cooldown >= 20s)
   useEffect(() => {
     let timer;
-    if (autoMode && infiniteActive && !isFighting) {
+    if (autoMode && infiniteActive && !isFighting && cooldownLeft <= 0) {
       timer = setTimeout(() => {
         handleInfiniteFight(true);
-      }, 1500);
+      }, 500);
     }
     return () => clearTimeout(timer);
-  }, [autoMode, infiniteActive, isFighting, infiniteWave]);
+  }, [autoMode, infiniteActive, isFighting, infiniteWave, cooldownLeft]);
 
   const handleMarkRead = () => {
     authFetch(`${API_URL}/api/pvp/notifications/${userId}/read`, { method: 'POST' })
@@ -251,68 +365,143 @@ export default function PvpArena({ user, setUser }) {
     }
   };
 
-  // Função do Modo Infinito (Com turnos e envio da recompensa ao servidor)
+  const pushBattleLog = (entry) => {
+    setBattleLogs(prev => {
+      const next = [...prev, entry];
+      return next.length > 60 ? next.slice(-60) : next;
+    });
+  };
+
+  const applyCooldown = (retryAfterSec) => {
+    const ms = (Number(retryAfterSec) > 0 ? Number(retryAfterSec) * 1000 : INFINITE_COOLDOWN_MS);
+    setCooldownEndAt(Date.now() + ms);
+  };
+
   const handleInfiniteFight = async (shouldAttack) => {
     if (!shouldAttack) {
       setInfiniteActive(false);
       setAutoMode(false);
+      setIsFighting(false);
       setBattleLogs([]);
       setInfiniteWave(1);
+      setEnemyWaveCard(buildEnemy(1));
+      setCooldownEndAt(0);
+      setCooldownLeft(0);
+      setShowResetConfirm(false);
+      setInfMessage(null);
       return;
     }
 
+    if (isFighting || cooldownLeft > 0) return;
+
     setIsFighting(true);
+    setInfMessage(null);
     setBattleLogs([]);
 
     try {
-      setBattleLogs(prev => [...prev, { text: `⚔️ Iniciaste o combate contra ${enemyWaveCard.name}!`, type: 'info' }]);
-      
-      await new Promise(r => setTimeout(r, 400));
-      setBattleLogs(prev => [...prev, { text: `💥 Atacaste com o teu deck e causaste grande impacto!`, type: 'player' }]);
+      pushBattleLog({ text: `⚔️ Iniciaste o combate contra ${enemyWaveCard.name}!`, type: 'info' });
 
-      await new Promise(r => setTimeout(r, 400));
-      setBattleLogs(prev => [...prev, { text: `🛡️ ${enemyWaveCard.name} contra-atacou mas a tua defesa resistiu!`, type: 'enemy' }]);
+      await new Promise(r => setTimeout(r, 350));
+      pushBattleLog({ text: '💥 Atacaste com o teu deck e causaste grande impacto!', type: 'player' });
+
+      await new Promise(r => setTimeout(r, 350));
+      pushBattleLog({ text: `🛡️ ${enemyWaveCard.name} contra-atacou mas a tua defesa resistiu!`, type: 'enemy' });
 
       const res = await authFetch(`${API_URL}/api/infinite/reward`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wave: infiniteWave })
       });
-      const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || 'Erro ao processar recompensa.');
-
-      setBattleLogs(prev => [...prev, { text: `✨ Vencedor! Ganhaste ${data.rewardRyos} Ryos na Onda #${infiniteWave}!`, type: 'info' }]);
-      
-      if (data.newCoins !== undefined) {
-        setUser(prev => ({ ...prev, coins: data.newCoins }));
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        let errData = {};
+        try { errData = await res.json(); } catch { /* sem corpo */ }
+        applyCooldown(retryAfter || errData.retryAfter);
+        const waitSec = Number(retryAfter || errData.retryAfter) || Math.ceil(INFINITE_COOLDOWN_MS / 1000);
+        pushBattleLog({ text: `⏳ Cooldown ativo. Aguarda ${waitSec}s para a próxima recompensa.`, type: 'enemy' });
+        setInfMessage({ type: 'error', text: `Cooldown ativo (${waitSec}s). O auto-farm/manual retomam quando terminar.` });
+        return;
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao processar recompensa.');
 
-      // Atualiza para a onda seguinte
+      applyCooldown();
+
+      const ryos = Number(data.rewardRyos || 0);
+      const diamonds = Number(data.rewardDiamonds || 0);
+      const rewardText = diamonds > 0
+        ? `✨ Vencedor! Ganhaste ${ryos} Ryos e 💎 ${diamonds} na Onda #${infiniteWave}!`
+        : `✨ Vencedor! Ganhaste ${ryos} Ryos na Onda #${infiniteWave}!`;
+      pushBattleLog({ text: rewardText, type: 'info' });
+      if (data.isRecord) pushBattleLog({ text: '🏅 Novo recorde nesta onda!', type: 'info' });
+
+      if (data.newCoins !== undefined || data.newDiamonds !== undefined) {
+        setUser(prev => ({
+          ...prev,
+          ...(data.newCoins !== undefined ? { coins: data.newCoins } : {}),
+          ...(data.newDiamonds !== undefined ? { diamonds: data.newDiamonds } : {})
+        }));
+      }
+
+      if (data.maxWave != null) setInfMaxWave(Number(data.maxWave));
+      if (data.bestWave != null) setInfBestWave(Number(data.bestWave));
+
+      await new Promise(r => setTimeout(r, 350));
+
       const nextWave = infiniteWave + 1;
       setInfiniteWave(nextWave);
-      const nextMaxVida = 600 + (nextWave * 150);
-      setEnemyWaveCard({
-        name: `Ninja Renegado Nvl ${nextWave}`,
-        vida: nextMaxVida,
-        maxVida: nextMaxVida,
-        tai: 80 + (nextWave * 30),
-        nin: 50 + (nextWave * 20)
-      });
+      setEnemyWaveCard(buildEnemy(nextWave));
+      setInfMessage(null);
     } catch (err) {
       console.error(err);
-      setBattleLogs(prev => [...prev, { text: `❌ Falha no combate: ${err.message}`, type: 'enemy' }]);
+      pushBattleLog({ text: `❌ Falha no combate: ${err.message}`, type: 'enemy' });
+      setInfMessage({ type: 'error', text: err.message || 'Falha no combate.' });
       setAutoMode(false);
     } finally {
       setIsFighting(false);
     }
   };
 
+  const handleInfiniteReset = async () => {
+    if (infResetsRemaining === 0 || infResetting) return;
+    setInfResetting(true);
+    setInfMessage(null);
+    try {
+      const res = await authFetch(`${API_URL}/api/infinite/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao reiniciar o modo infinito.');
+
+      setAutoMode(false);
+      setIsFighting(false);
+      setInfiniteWave(1);
+      setEnemyWaveCard(buildEnemy(1));
+      setBattleLogs([{ text: '🔄 Farm reiniciado. O ranking (best wave) mantém-se.', type: 'info' }]);
+      setCooldownEndAt(0);
+      setCooldownLeft(0);
+      setShowResetConfirm(false);
+      if (data.maxWave != null) setInfMaxWave(Number(data.maxWave));
+      if (data.bestWave != null) setInfBestWave(Number(data.bestWave));
+      if (data.resetsRemaining != null) setInfResetsRemaining(Number(data.resetsRemaining));
+      setInfMessage({ type: 'success', text: `Reiniciado com sucesso. Restam ${data.resetsRemaining ?? infResetsRemaining} reset(s) hoje.` });
+      loadInfiniteProgress(true);
+    } catch (err) {
+      setInfMessage({ type: 'error', text: err.message || 'Falha ao reiniciar.' });
+    } finally {
+      setInfResetting(false);
+      setShowResetConfirm(false);
+    }
+  };
+
   const tabStyle = (id) => ({ padding: '10px 20px', background: tab === id ? ORANGE : '#222', color: tab === id ? '#000' : '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' });
   const top3 = ranking.slice(0, 3);
   const MEDALS = ['🥇', '🥈', '🥉'];
+  const rewardPreview = predictedReward(infiniteWave, infBestWave);
 
   return (
     <div style={{ padding: '20px', color: '#fff', maxWidth: '1000px', margin: '0 auto', fontFamily: 'sans-serif' }}>
@@ -389,7 +578,7 @@ export default function PvpArena({ user, setUser }) {
             {inventory.map(card => {
               const isSelected = selectedDefense.includes(card.id_card);
               return (
-                <div 
+                <div
                   key={card.id_card}
                   onClick={() => {
                     deckDirty.current = true;
@@ -478,50 +667,54 @@ export default function PvpArena({ user, setUser }) {
         </div>
       )}
 
-      {/* TAB 4: MODO INFINITO */}
+      {/* TAB 4: MODO INFINITO (FM3) */}
       {tab === 'infinite' && (
-        <div style={{ ...PANEL, textAlign: 'center', maxWidth: '650px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ color: ORANGE, margin: 0 }}>🌀 Modo Infinito (Farm de Ryos)</h3>
-            
-            {infiniteActive && (
-              <button
-                onClick={() => setAutoMode(!autoMode)}
-                style={{
-                  background: autoMode ? '#eab308' : '#334155',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '13px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: autoMode ? '0 0 10px rgba(234, 179, 8, 0.4)' : 'none'
-                }}
-              >
-                {autoMode ? '⚡ Auto-Farm: LIGADO' : '⏸️ Auto-Farm: DESLIGADO'}
-              </button>
-            )}
+        <div style={{ ...PANEL, maxWidth: '900px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <h3 style={{ color: ORANGE, margin: 0 }}>🌀 Modo Infinito (Farm)</h3>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#aaa', background: '#121212', border: '1px solid #333', padding: '6px 10px', borderRadius: '999px' }}>
+                Melhor onda: <strong style={{ color: ORANGE }}>#{infBestWave || 0}</strong> · Máx. sessão: <strong style={{ color: '#fff' }}>#{infMaxWave || 0}</strong> · Resets: <strong style={{ color: infResetsRemaining === 0 ? RED : '#22c55e' }}>{infResetsRemaining ?? '…'}</strong>/dia
+              </span>
+              {infiniteActive && (
+                <button
+                  onClick={() => setAutoMode(!autoMode)}
+                  disabled={isFighting}
+                  style={{
+                    background: autoMode ? '#eab308' : '#334155',
+                    color: autoMode ? '#111' : '#fff',
+                    border: 'none',
+                    padding: '7px 12px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: isFighting ? 'not-allowed' : 'pointer',
+                    boxShadow: autoMode ? '0 0 10px rgba(234, 179, 8, 0.35)' : 'none'
+                  }}
+                >
+                  {autoMode ? '⚡ Auto-Farm: LIGADO' : '⏸️ Auto-Farm: DESLIGADO'}
+                </button>
+              )}
+            </div>
           </div>
 
+          <InlineNotice notice={infMessage} />
+
           {!infiniteActive ? (
-            <div style={{ padding: '20px 0' }}>
-              <p style={{ color: '#aaa', marginBottom: '20px', lineHeight: '1.5' }}>
-                Enfrenta vagas contínuas de cartas inimigas para acumular recompensas em Ryos cada vez maiores.
+            <div style={{ padding: '12px 0', textAlign: 'center' }}>
+              <p style={{ color: '#aaa', marginBottom: '18px', lineHeight: '1.5', maxWidth: '620px', margin: '0 auto 18px' }}>
+                Enfrenta vagas contínuas para ganhar Ryos e 💎. Em ondas recorde recebes recompensa total; em ondas repetidas, recompensa reduzida. O cooldown entre recompensas é respeitado automaticamente.
               </p>
-              <button 
-                onClick={() => setInfiniteActive(true)} 
-                style={{ 
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
-                  color: '#fff', 
-                  border: 'none', 
-                  padding: '14px 28px', 
-                  borderRadius: '8px', 
-                  fontWeight: 'bold', 
-                  fontSize: '16px', 
+              <button
+                onClick={() => { setInfiniteActive(true); setInfMessage(null); loadInfiniteProgress(true); loadUser(); }}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '14px 28px',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
                   cursor: 'pointer',
                   boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
                 }}
@@ -531,36 +724,79 @@ export default function PvpArena({ user, setUser }) {
             </div>
           ) : (
             <div>
-              <div style={{ 
-                background: '#121212', 
-                border: '1px solid #27272a',
-                padding: '18px', 
-                borderRadius: '12px', 
-                marginBottom: '15px' 
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '16px' }}>
-                    Onda Atual: #{infiniteWave}
-                  </span>
-                  <span style={{ color: '#eab308', fontSize: '13px', fontWeight: 'bold' }}>
-                    💰 Recompensa: {infiniteWave * 150} Ryos
-                  </span>
+              {/* Estado + controlos */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '12px' }}>
+                <div style={{ flex: '1 1 220px', background: '#121212', border: '1px solid #27272a', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '16px' }}>Onda atual: #{infiniteWave}</div>
+                  <div style={{ color: '#eab308', fontSize: '13px', marginTop: '4px', fontWeight: 'bold' }}>
+                    Recompensa prevista: {rewardPreview.ryos} Ryos{rewardPreview.diamonds > 0 ? ` + 💎 ${rewardPreview.diamonds}` : ' + 💎 0'}
+                  </div>
+                  <div style={{ color: '#888', fontSize: '12px', marginTop: '2px' }}>
+                    {rewardPreview.isRecord ? 'Recorde: recompensa total' : 'Repetição: recompensa reduzida'}
+                  </div>
                 </div>
-
-                <h4 style={{ color: ORANGE, fontSize: '18px', margin: '5px 0' }}>{enemyWaveCard.name}</h4>
-                
-                <div style={{ width: '100%', background: '#27272a', borderRadius: '6px', height: '10px', margin: '10px 0', overflow: 'hidden' }}>
-                  <div style={{ 
-                    width: `${Math.max(0, Math.min(100, (enemyWaveCard.vida / enemyWaveCard.maxVida) * 100))}%`, 
-                    background: '#ef4444', 
-                    height: '100%', 
-                    transition: 'width 0.3s ease' 
-                  }} />
+                <div style={{ flex: '1 1 220px', background: '#121212', border: '1px solid #27272a', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '13px', color: '#ddd', marginBottom: '8px' }}>Gestão do farm</div>
+                  {!showResetConfirm ? (
+                    <button
+                      onClick={() => setShowResetConfirm(true)}
+                      disabled={infResetsRemaining === 0 || infResetting || isFighting}
+                      style={{
+                        width: '100%',
+                        background: infResetsRemaining === 0 ? '#3f3f46' : '#7c2d12',
+                        color: '#fff',
+                        border: '1px solid #9a3412',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        cursor: (infResetsRemaining === 0 || infResetting || isFighting) ? 'not-allowed' : 'pointer',
+                        opacity: (infResetsRemaining === 0 || infResetting || isFighting) ? 0.65 : 1
+                      }}
+                    >
+                      Reiniciar (2x/dia){infResetsRemaining != null ? ` · restam ${infResetsRemaining}` : ''}
+                    </button>
+                  ) : (
+                    <div style={{ background: '#2a1712', border: '1px solid #9a3412', borderRadius: '8px', padding: '10px' }}>
+                      <div style={{ fontSize: '12px', color: '#fed7aa', marginBottom: '8px' }}>Reiniciar volta a onda 1 e consome 1 reset hoje. O teu melhor recorde/ranking mantém-se. Confirmar?</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={handleInfiniteReset} disabled={infResetting} style={{ flex: 1, background: '#ea580c', color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', fontWeight: 'bold', cursor: infResetting ? 'wait' : 'pointer' }}>{infResetting ? 'A reiniciar...' : 'Confirmar'}</button>
+                        <button onClick={() => setShowResetConfirm(false)} disabled={infResetting} style={{ flex: 1, background: '#333', color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer' }}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                  {cooldownLeft > 0 && (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#facc15' }}>⏳ A aguardar cooldown: <strong>{cooldownLeft}s</strong></div>
+                  )}
                 </div>
+              </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: '13px', color: '#aaa', marginTop: '8px' }}>
-                  <span>❤️ HP: <strong style={{ color: '#fff' }}>{enemyWaveCard.vida}</strong></span>
-                  <span>⚔️ Taijutsu: <strong style={{ color: '#fff' }}>{enemyWaveCard.tai}</strong></span>
+              {/* 2 decks lado a lado */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'stretch', marginBottom: '12px' }}>
+                <div style={{ flex: '1 1 280px', background: '#121212', border: '1px solid #27272a', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ color: ORANGE, fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>🛡️ O meu deck de batalha</div>
+                  {myDefense.length === 0 ? (
+                    <div style={{ background: '#1b1b27', border: '1px dashed #444', borderRadius: '8px', padding: '12px', color: '#aaa', fontSize: '13px' }}>
+                      Não tens deck de batalha configurado. Podes continuar no farm, mas o combate usa a tua progressão base. Configura o deck para refletir as tuas cartas.
+                      <div style={{ marginTop: '10px' }}>
+                        <button type="button" onClick={() => setTab('defense')} style={{ background: ORANGE, color: '#000', border: 'none', padding: '8px 12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Configurar Defesa</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' }}>
+                      {myDefense.map((c, i) => <MiniCard key={`${c.id_card}-${i}`} card={c} />)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ alignSelf: 'center', color: RED, fontWeight: 'bold', fontSize: '20px', flex: '0 0 auto', padding: '0 4px' }}>VS</div>
+                <div style={{ flex: '1 1 280px', background: '#121212', border: '1px solid #7f1d1d', borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ color: '#fca5a5', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>☠️ Inimigo da onda #{infiniteWave}</div>
+                  <MiniCard card={enemyWaveCard} />
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ width: '100%', background: '#27272a', borderRadius: '6px', height: '10px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.max(0, Math.min(100, (enemyWaveCard.vida / enemyWaveCard.maxVida) * 100))}%`, background: '#ef4444', height: '100%', transition: 'width 0.3s ease' }} />
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>HP: {enemyWaveCard.vida} / {enemyWaveCard.maxVida}</div>
+                  </div>
                 </div>
               </div>
 
@@ -570,10 +806,10 @@ export default function PvpArena({ user, setUser }) {
                 border: '1px solid #27272a',
                 borderRadius: '8px',
                 padding: '12px',
-                height: '140px',
+                height: '150px',
                 overflowY: 'auto',
                 textAlign: 'left',
-                marginBottom: '15px',
+                marginBottom: '12px',
                 fontFamily: 'monospace',
                 fontSize: '12px'
               }}>
@@ -584,42 +820,44 @@ export default function PvpArena({ user, setUser }) {
                     </div>
                   ))
                 ) : (
-                  <div style={{ color: '#52525b', textAlign: 'center', paddingTop: '40px' }}>
+                  <div style={{ color: '#52525b', textAlign: 'center', paddingTop: '45px' }}>
                     Pronto para iniciar o combate da Onda #{infiniteWave}...
                   </div>
                 )}
               </div>
 
               {/* Ações */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                <button 
-                  onClick={() => handleInfiniteFight(true)} 
-                  disabled={isFighting || autoMode}
-                  style={{ 
-                    background: isFighting || autoMode ? '#4b5563' : '#22c55e', 
-                    color: '#fff', 
-                    border: 'none', 
-                    padding: '10px 20px', 
-                    borderRadius: '6px', 
-                    fontWeight: 'bold', 
-                    cursor: isFighting || autoMode ? 'not-allowed' : 'pointer',
-                    opacity: isFighting || autoMode ? 0.6 : 1
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleInfiniteFight(true)}
+                  disabled={isFighting || autoMode || cooldownLeft > 0}
+                  style={{
+                    background: (isFighting || autoMode || cooldownLeft > 0) ? '#4b5563' : '#22c55e',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '11px 20px',
+                    borderRadius: '8px',
+                    fontWeight: 'bold',
+                    cursor: (isFighting || autoMode || cooldownLeft > 0) ? 'not-allowed' : 'pointer',
+                    opacity: (isFighting || autoMode || cooldownLeft > 0) ? 0.7 : 1,
+                    minWidth: '180px'
                   }}
                 >
-                  {isFighting ? 'A Combater... ⚔️' : 'Atacar Onda ⚔️'}
+                  {isFighting ? 'A Combater... ⚔️' : cooldownLeft > 0 ? `Cooldown (${cooldownLeft}s)` : autoMode ? 'Auto-Farm ativo' : 'Atacar Onda ⚔️'}
                 </button>
 
-                <button 
-                  onClick={() => handleInfiniteFight(false)} 
+                <button
+                  onClick={() => handleInfiniteFight(false)}
                   disabled={isFighting}
-                  style={{ 
-                    background: '#ef4444', 
-                    color: '#fff', 
-                    border: 'none', 
-                    padding: '10px 20px', 
-                    borderRadius: '6px', 
-                    fontWeight: 'bold', 
-                    cursor: isFighting ? 'not-allowed' : 'pointer' 
+                  style={{
+                    background: '#ef4444',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '11px 20px',
+                    borderRadius: '8px',
+                    fontWeight: 'bold',
+                    cursor: isFighting ? 'not-allowed' : 'pointer',
+                    opacity: isFighting ? 0.7 : 1
                   }}
                 >
                   Fugir / Desistir
@@ -627,6 +865,42 @@ export default function PvpArena({ user, setUser }) {
               </div>
             </div>
           )}
+
+          {/* Ranking global paginado */}
+          <div style={{ marginTop: '18px', borderTop: '1px solid #333', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              <h4 style={{ color: ORANGE, margin: 0 }}>🏆 Ranking Global do Infinito</h4>
+              <button type="button" onClick={() => loadInfiniteRanking(infRankPage)} disabled={infRankLoading} style={{ background: '#222', color: '#fff', border: '1px solid #444', padding: '6px 12px', borderRadius: '6px', cursor: infRankLoading ? 'wait' : 'pointer', fontSize: '12px' }}>
+                {infRankLoading ? 'A carregar...' : 'Atualizar'}
+              </button>
+            </div>
+            {infRankLoading && infRanking.length === 0 ? (
+              <div style={{ color: '#aaa', fontSize: '13px' }}>A carregar ranking...</div>
+            ) : infRanking.length === 0 ? (
+              <div style={{ color: '#aaa', fontSize: '13px' }}>Sem entradas no ranking ainda.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {infRanking.map((e) => {
+                  const isMe = Number(e.id_user) === userId;
+                  return (
+                    <div key={`${e.rank}-${e.id_user}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isMe ? '#3a1d12' : '#121212', border: isMe ? `1px solid ${ORANGE}` : '1px solid #242433', borderRadius: '8px', padding: '9px 12px' }}>
+                      <div style={{ fontSize: '14px' }}>
+                        <strong style={{ color: isMe ? ORANGE : '#fff' }}>#{e.rank} {e.name}{isMe ? ' (tu)' : ''}</strong>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#ddd' }}>Melhor onda: <strong style={{ color: ORANGE }}>{e.bestWave}</strong></div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '12px', color: '#888' }}>Página {infRankPage} de {Math.max(1, infRankPages)} · {infRankTotal} registos</div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" onClick={() => loadInfiniteRanking(Math.max(1, infRankPage - 1))} disabled={infRankLoading || infRankPage <= 1} style={{ background: '#222', color: '#fff', border: '1px solid #444', padding: '6px 12px', borderRadius: '6px', cursor: (infRankLoading || infRankPage <= 1) ? 'not-allowed' : 'pointer', opacity: infRankPage <= 1 ? 0.6 : 1 }}>Anterior</button>
+                <button type="button" onClick={() => loadInfiniteRanking(Math.min(infRankPages || 1, infRankPage + 1))} disabled={infRankLoading || infRankPage >= (infRankPages || 1)} style={{ background: '#222', color: '#fff', border: '1px solid #444', padding: '6px 12px', borderRadius: '6px', cursor: (infRankLoading || infRankPage >= (infRankPages || 1)) ? 'not-allowed' : 'pointer', opacity: infRankPage >= (infRankPages || 1) ? 0.6 : 1 }}>Seguinte</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

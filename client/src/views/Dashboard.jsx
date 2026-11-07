@@ -68,8 +68,15 @@ export default function Dashboard({ user, setCurrentView }) {
         <div className="stat-card">
           <div className="stat-icon">💰</div>
           <div>
-            <p className="stat-value">{user.coins} Ryo</p>
+            <p className="stat-value">{user.coins ?? 0} Ryo</p>
             <p className="stat-label">Coins</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon">💎</div>
+          <div>
+            <p className="stat-value">{user.diamonds ?? 0}</p>
+            <p className="stat-label">Diamantes</p>
           </div>
         </div>
         <div className="stat-card">
@@ -77,13 +84,6 @@ export default function Dashboard({ user, setCurrentView }) {
           <div>
             <p className="stat-value">{totalCards}</p>
             <p className="stat-label">Cartas Posuídas</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">👥</div>
-          <div>
-            <p className="stat-value">{Math.min(totalCards, 5)} / 5</p>
-            <p className="stat-label">Equipa Ativa</p>
           </div>
         </div>
         <div className="stat-card">
