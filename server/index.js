@@ -149,6 +149,41 @@ app.use((err, req, res, next) => {
       'CREATE INDEX IF NOT EXISTS idx_gacha_pulls_user ON gacha_pulls (id_user, banner_id, created_at DESC)'
     );
 
+    // stat ranks (B4): D+ default, não reescala stats existentes (vidastatus/taistatus/chakrastatus intocados).
+    // Migração aditiva e idempotente na tabela cards (instâncias do jogador). cardmodel intocado.
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS vida_rank_pos SMALLINT NOT NULL DEFAULT 6");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS vida_rank_code VARCHAR(4) NOT NULL DEFAULT 'D+'");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS vida_rank_mult NUMERIC(6,2) NOT NULL DEFAULT 1.0");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS tai_rank_pos SMALLINT NOT NULL DEFAULT 6");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS tai_rank_code VARCHAR(4) NOT NULL DEFAULT 'D+'");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS tai_rank_mult NUMERIC(6,2) NOT NULL DEFAULT 1.0");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS nin_rank_pos SMALLINT NOT NULL DEFAULT 6");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS nin_rank_code VARCHAR(4) NOT NULL DEFAULT 'D+'");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS nin_rank_mult NUMERIC(6,2) NOT NULL DEFAULT 1.0");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS stat_rank_pos SMALLINT NOT NULL DEFAULT 6");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS stat_rank_code VARCHAR(4) NOT NULL DEFAULT 'D+'");
+    await pool.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS stat_rank_mult NUMERIC(6,2) NOT NULL DEFAULT 1.0");
+    // Backfill defensivo (idempotente): garante defaults D+ se algum NULL residual existir; nunca toca em vidastatus/taistatus/chakrastatus.
+    await pool.query(`
+      UPDATE cards SET
+        vida_rank_pos = COALESCE(vida_rank_pos, 6),
+        vida_rank_code = COALESCE(vida_rank_code, 'D+'),
+        vida_rank_mult = COALESCE(vida_rank_mult, 1.0),
+        tai_rank_pos = COALESCE(tai_rank_pos, 6),
+        tai_rank_code = COALESCE(tai_rank_code, 'D+'),
+        tai_rank_mult = COALESCE(tai_rank_mult, 1.0),
+        nin_rank_pos = COALESCE(nin_rank_pos, 6),
+        nin_rank_code = COALESCE(nin_rank_code, 'D+'),
+        nin_rank_mult = COALESCE(nin_rank_mult, 1.0),
+        stat_rank_pos = COALESCE(stat_rank_pos, 6),
+        stat_rank_code = COALESCE(stat_rank_code, 'D+'),
+        stat_rank_mult = COALESCE(stat_rank_mult, 1.0)
+      WHERE vida_rank_pos IS NULL OR vida_rank_code IS NULL OR vida_rank_mult IS NULL
+         OR tai_rank_pos IS NULL OR tai_rank_code IS NULL OR tai_rank_mult IS NULL
+         OR nin_rank_pos IS NULL OR nin_rank_code IS NULL OR nin_rank_mult IS NULL
+         OR stat_rank_pos IS NULL OR stat_rank_code IS NULL OR stat_rank_mult IS NULL
+    `);
+
     // Config do gacha tem de ser válida antes do primeiro pull da vida do servidor.
     validateGachaConfig();
     console.log('✅ Migrações de BD aplicadas e gachaConfig validada.');

@@ -31,16 +31,30 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-const cardView = (c) => ({
-  id_card: c.id_card,
-  name: c.name,
-  vida: num(c.vidastatus ?? c.vida),
-  tai: num(c.taistatus ?? c.tai),
-  nin: num(c.chakrastatus ?? c.nin),
-  // Caminho curto para a rota de imagens (as imagens estao na BD como base64 de varios MB: nunca vao no JSON).
-  image_url: c.id_cardmodel ? `/api/pvp/card-image/${c.id_cardmodel}` : null,
-  classe: c.classe ?? null
+// R1-C4: valores efetivos da instância + ranks por stat/geral (retrocompatível; defaults D+/1.0).
+const statRanksOf = (c, vida, tai, nin) => ({
+  vida: { pos: c.vida_rank_pos ?? 6, code: c.vida_rank_code ?? 'D+', mult: Number(c.vida_rank_mult ?? 1.0), value: vida },
+  tai: { pos: c.tai_rank_pos ?? 6, code: c.tai_rank_code ?? 'D+', mult: Number(c.tai_rank_mult ?? 1.0), value: tai },
+  nin: { pos: c.nin_rank_pos ?? 6, code: c.nin_rank_code ?? 'D+', mult: Number(c.nin_rank_mult ?? 1.0), value: nin },
+  overall: { pos: c.stat_rank_pos ?? 6, code: c.stat_rank_code ?? 'D+', mult: Number(c.stat_rank_mult ?? 1.0) }
 });
+
+const cardView = (c) => {
+  const vida = num(c.vidastatus ?? c.vida);
+  const tai = num(c.taistatus ?? c.tai);
+  const nin = num(c.chakrastatus ?? c.nin);
+  return {
+    id_card: c.id_card,
+    name: c.name,
+    vida,
+    tai,
+    nin,
+    // Caminho curto para a rota de imagens (as imagens estao na BD como base64 de varios MB: nunca vao no JSON).
+    image_url: c.id_cardmodel ? `/api/pvp/card-image/${c.id_cardmodel}` : null,
+    classe: c.classe ?? null,
+    statRanks: statRanksOf(c, vida, tai, nin)
+  };
+};
 // Mesmo calculo de poder que ja existia: vida + taijutsu + ninjutsu.
 const totalPower = (cards) => cards.reduce((acc, c) => acc + c.vida + c.tai + c.nin, 0);
 
@@ -429,7 +443,12 @@ router.get('/pvp/cards/:id', requireAuth, requireSelf('id'), async (req, res) =>
   const userId = req.user.id;
   try {
     const r = await pool.query(
-      `SELECT c.id_card, c.id_cardmodel, c.name, c.vidastatus, c.taistatus, c.chakrastatus, c.level, cm.classe
+      `SELECT c.id_card, c.id_cardmodel, c.name, c.vidastatus, c.taistatus, c.chakrastatus, c.level,
+              c.vida_rank_pos, c.vida_rank_code, c.vida_rank_mult,
+              c.tai_rank_pos, c.tai_rank_code, c.tai_rank_mult,
+              c.nin_rank_pos, c.nin_rank_code, c.nin_rank_mult,
+              c.stat_rank_pos, c.stat_rank_code, c.stat_rank_mult,
+              cm.classe
        FROM inventario i
        JOIN cards c ON i.id_card = c.id_card
        LEFT JOIN cardmodel cm ON c.id_cardmodel = cm.id_modelcard

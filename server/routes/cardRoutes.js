@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
+const { computeStatValue } = require('../config/statRanks');
 
 // ==========================================
 // CONFIGURAÇÃO / FÓRMULAS
@@ -53,14 +54,21 @@ function applyXp(level, xp, gained) {
   return { level: currentLevel, xp: currentXp, xpNeeded };
 }
 
-// Atributo ao nível N = base * (1 + 5% * (N-1)). A base vem do cardmodel; se não existir, é deduzida do valor atual.
-function scaleStat(card, statKey, baseKey, oldLevel, newLevel) {
+// R1-C4: valor final = computeStatValue(levelBase, statMult), preservando ranks (não re-rola no feed).
+// levelBase = cardmodelBase * (1 + 5%*(level-1)) (molde × crescimento por nível).
+// Fallback de dedução considera statMult: base ≈ current / ((1 + 5%*(oldLevel-1)) * statMult).
+function scaleStat(card, statKey, baseKey, multKey, oldLevel, newLevel) {
   const current = toInt(card[statKey]);
-  if (newLevel <= oldLevel) return current;
-  const base = card[baseKey] !== null && card[baseKey] !== undefined
-    ? toInt(card[baseKey])
-    : current / (1 + STAT_GROWTH_PER_LEVEL * (oldLevel - 1));
-  return Math.max(current, Math.round(base * (1 + STAT_GROWTH_PER_LEVEL * (newLevel - 1))));
+  const rawMult = card && card[multKey];
+  const statMult = (rawMult !== null && rawMult !== undefined && Number.isFinite(Number(rawMult)))
+    ? Number(rawMult)
+    : 1.0;
+  const levelBase = (card[baseKey] !== null && card[baseKey] !== undefined)
+    ? toInt(card[baseKey]) * (1 + STAT_GROWTH_PER_LEVEL * (newLevel - 1))
+    : (statMult > 0
+        ? (current / ((1 + STAT_GROWTH_PER_LEVEL * (oldLevel - 1)) * statMult)) * (1 + STAT_GROWTH_PER_LEVEL * (newLevel - 1))
+        : current);
+  return computeStatValue(levelBase, statMult);
 }
 
 function computeFeed(target, sacrifices) {
@@ -68,11 +76,46 @@ function computeFeed(target, sacrifices) {
   const oldLevel = levelOf(target);
   const res = applyXp(oldLevel, toInt(target.xp), totalXpGanha);
   const stats = {
-    vida: scaleStat(target, 'vidastatus', 'base_vida', oldLevel, res.level),
-    tai:  scaleStat(target, 'taistatus',  'base_tai',  oldLevel, res.level),
-    nin:  scaleStat(target, 'chakrastatus', 'base_nin', oldLevel, res.level)
+    vida: scaleStat(target, 'vidastatus', 'base_vida', 'vida_rank_mult', oldLevel, res.level),
+    tai:  scaleStat(target, 'taistatus',  'base_tai',  'tai_rank_mult', oldLevel, res.level),
+    nin:  scaleStat(target, 'chakrastatus', 'base_nin', 'nin_rank_mult', oldLevel, res.level)
   };
   return { totalXpGanha, newLevel: res.level, newXp: res.xp, xpNeeded: res.xpNeeded, stats };
+}
+
+// R1-C4: ranks da instância (retrocompatível; defaults D+/1.0 se ausentes).
+function statRanksOf(card, values) {
+  if (!card) return undefined;
+  const v = values || {
+    vida: toInt(card.vidastatus ?? card.vida),
+    tai: toInt(card.taistatus ?? card.tai),
+    nin: toInt(card.chakrastatus ?? card.nin)
+  };
+  return {
+    vida: {
+      pos: card.vida_rank_pos ?? 6,
+      code: card.vida_rank_code ?? 'D+',
+      mult: Number(card.vida_rank_mult ?? 1.0),
+      value: v.vida
+    },
+    tai: {
+      pos: card.tai_rank_pos ?? 6,
+      code: card.tai_rank_code ?? 'D+',
+      mult: Number(card.tai_rank_mult ?? 1.0),
+      value: v.tai
+    },
+    nin: {
+      pos: card.nin_rank_pos ?? 6,
+      code: card.nin_rank_code ?? 'D+',
+      mult: Number(card.nin_rank_mult ?? 1.0),
+      value: v.nin
+    },
+    overall: {
+      pos: card.stat_rank_pos ?? 6,
+      code: card.stat_rank_code ?? 'D+',
+      mult: Number(card.stat_rank_mult ?? 1.0)
+    }
+  };
 }
 
 // Cartas pertencentes ao utilizador. Com lock=true bloqueia as linhas (evita cliques duplos / pedidos concorrentes).
@@ -139,7 +182,8 @@ router.post('/preview-feed', requireAuth, async (req, res) => {
       previewLevel: r.newLevel,
       previewXp: r.newXp,
       xpNeeded: r.xpNeeded,
-      previewStats: r.stats
+      previewStats: r.stats,
+      targetStatRanks: statRanksOf(target, r.stats)
     });
   } catch (error) {
     console.error('Erro no preview de feed:', error);
@@ -256,6 +300,7 @@ router.post('/feed', requireAuth, async (req, res) => {
       newXp: r.newXp,
       xpNeeded: r.xpNeeded,
       newStats: r.stats,
+      targetStatRanks: statRanksOf(target, r.stats),
       deletedIds: requestedIds
     });
   } catch (error) {

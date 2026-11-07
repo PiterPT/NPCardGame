@@ -9,6 +9,7 @@ const {
   RATE_LIMIT_WINDOW_MS
 } = require('../config/gachaConfig');
 const { rollClass } = require('../config/gachaEngine');
+const { rollStatRank, computeCardRank, computeStatValue } = require('../config/statRanks');
 
 const router = express.Router();
 
@@ -194,12 +195,40 @@ router.post('/gacha/pull', requireAuth, gachaRateLimiter, async (req, res) => {
 
       const card = pickCard(poolCards);
 
-      // A. Nova instancia de carta para o utilizador.
+      // R1-C3: 3 ranks independentes por stat (servidor, crypto); valores finais e rank geral na mesma tx.
+      const vidaRank = rollStatRank();
+      const taiRank = rollStatRank();
+      const ninRank = rollStatRank();
+      const vidaValue = computeStatValue(card.vida, vidaRank.multiplier);
+      const taiValue = computeStatValue(card.tai, taiRank.multiplier);
+      const ninValue = computeStatValue(card.nin, ninRank.multiplier);
+      const overallRank = computeCardRank([vidaRank.pos, taiRank.pos, ninRank.pos]);
+
+      // A. Nova instancia de carta para o utilizador (valores finais + ranks; tx atómica).
       const cardInsert = await client.query(
-        `INSERT INTO cards (id_user, id_cardmodel, name, vidastatus, taistatus, chakrastatus)
-              VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id_card`,
-        [id_user, card.id_modelcard, card.name, String(card.vida), String(card.tai), String(card.nin)]
+        `INSERT INTO cards (
+           id_user, id_cardmodel, name,
+           vidastatus, taistatus, chakrastatus,
+           vida_rank_pos, vida_rank_code, vida_rank_mult,
+           tai_rank_pos, tai_rank_code, tai_rank_mult,
+           nin_rank_pos, nin_rank_code, nin_rank_mult,
+           stat_rank_pos, stat_rank_code, stat_rank_mult
+         ) VALUES (
+           $1, $2, $3,
+           $4, $5, $6,
+           $7, $8, $9,
+           $10, $11, $12,
+           $13, $14, $15,
+           $16, $17, $18
+         ) RETURNING id_card`,
+        [
+          id_user, card.id_modelcard, card.name,
+          String(vidaValue), String(taiValue), String(ninValue),
+          vidaRank.pos, vidaRank.code, vidaRank.multiplier,
+          taiRank.pos, taiRank.code, taiRank.multiplier,
+          ninRank.pos, ninRank.code, ninRank.multiplier,
+          overallRank.pos, overallRank.code, overallRank.multiplier
+        ]
       );
 
       // B. Inventario.
@@ -218,11 +247,18 @@ router.post('/gacha/pull', requireAuth, gachaRateLimiter, async (req, res) => {
 
       pulledCards.push({
         name: card.name,
-        vida: card.vida,
-        tai: card.tai,
-        nin: card.nin,
+        // Valores finais da instância (retrocompatível: vida/tai/nin = finais, não molde)
+        vida: vidaValue,
+        tai: taiValue,
+        nin: ninValue,
         image_url: cardImageUrl(card.id_modelcard),
-        classe: selectedClass
+        classe: selectedClass,
+        statRanks: {
+          vida: { pos: vidaRank.pos, code: vidaRank.code, mult: vidaRank.multiplier, value: vidaValue },
+          tai: { pos: taiRank.pos, code: taiRank.code, mult: taiRank.multiplier, value: taiValue },
+          nin: { pos: ninRank.pos, code: ninRank.code, mult: ninRank.multiplier, value: ninValue },
+          overall: { pos: overallRank.pos, code: overallRank.code, mult: overallRank.multiplier }
+        }
       });
 
       if (selectedClass === 'SSR') pity = 0; // pity reinicia ao sair SSR

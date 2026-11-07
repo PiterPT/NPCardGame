@@ -28,6 +28,7 @@ router.get('/user/:id/profile', requireAuth, requireSelf('id'), async (req, res)
     const user = userResult.rows[0];
 
     // 2. Buscar inventário fazendo JOIN entre inventario -> cards -> cardmodel
+    // R1-C4: inclui ranks/mults/geral da instância (valores efetivos + ranks; retrocompatível).
     const cardsResult = await pool.query(
       `SELECT c.id_card,
               c.name,
@@ -37,6 +38,10 @@ router.get('/user/:id/profile', requireAuth, requireSelf('id'), async (req, res)
               c.level,
               c.xp,
               c.id_cardmodel,
+              c.vida_rank_pos, c.vida_rank_code, c.vida_rank_mult,
+              c.tai_rank_pos, c.tai_rank_code, c.tai_rank_mult,
+              c.nin_rank_pos, c.nin_rank_code, c.nin_rank_mult,
+              c.stat_rank_pos, c.stat_rank_code, c.stat_rank_mult,
               cm.classe
        FROM inventario i
        JOIN cards c ON i.id_card = c.id_card
@@ -45,16 +50,33 @@ router.get('/user/:id/profile', requireAuth, requireSelf('id'), async (req, res)
       [userId]
     );
 
+    const toInt = (v, fb = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : fb; };
+    const num = (v, fb) => { const n = Number(v); return Number.isFinite(n) ? n : fb; };
+
     res.json({
       id_user: user.id_user,
       name: user.name,
       email: user.email,
       coins: user.coins,
       diamonds: user.diamonds ?? 0,
-      cards: cardsResult.rows.map(({ id_cardmodel, ...card }) => ({
-        ...card,
-        image_url: cardImageUrl(id_cardmodel)
-      }))
+      cards: cardsResult.rows.map(({ id_cardmodel, ...card }) => {
+        const vida = toInt(card.vida);
+        const tai = toInt(card.tai);
+        const nin = toInt(card.nin);
+        return {
+          ...card,
+          vida,
+          tai,
+          nin,
+          image_url: cardImageUrl(id_cardmodel),
+          statRanks: {
+            vida: { pos: card.vida_rank_pos ?? 6, code: card.vida_rank_code ?? 'D+', mult: num(card.vida_rank_mult, 1.0), value: vida },
+            tai: { pos: card.tai_rank_pos ?? 6, code: card.tai_rank_code ?? 'D+', mult: num(card.tai_rank_mult, 1.0), value: tai },
+            nin: { pos: card.nin_rank_pos ?? 6, code: card.nin_rank_code ?? 'D+', mult: num(card.nin_rank_mult, 1.0), value: nin },
+            overall: { pos: card.stat_rank_pos ?? 6, code: card.stat_rank_code ?? 'D+', mult: num(card.stat_rank_mult, 1.0) }
+          }
+        };
+      })
     });
 
   } catch (error) {
