@@ -17,7 +17,7 @@ router.get('/user/:id/profile', requireAuth, requireSelf('id'), async (req, res)
   try {
     // 1. Buscar os dados do utilizador
     const userResult = await pool.query(
-      'SELECT id_user, name, email, coins FROM users WHERE id_user = $1',
+      'SELECT id_user, name, email, coins, diamonds FROM users WHERE id_user = $1',
       [userId]
     );
 
@@ -50,6 +50,7 @@ router.get('/user/:id/profile', requireAuth, requireSelf('id'), async (req, res)
       name: user.name,
       email: user.email,
       coins: user.coins,
+      diamonds: user.diamonds ?? 0,
       cards: cardsResult.rows.map(({ id_cardmodel, ...card }) => ({
         ...card,
         image_url: cardImageUrl(id_cardmodel)
