@@ -277,9 +277,31 @@ export default function Inventory({ user, setUser }) {
         )}
 
         {mode === 'feed' && targetCardForFeed && selectedCards.filter(id => id !== targetCardForFeed.id_card).length > 0 && (
-          <button onClick={handleConfirmFeed} disabled={processing} style={{ marginLeft: 'auto', padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-            {processing ? '⏳ A processar...' : 'Alimentar'}
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {feedPreview && (() => {
+              const previewStats = feedPreview.previewStats || {};
+              const previewCard = {
+                vida: previewStats.vida ?? feedPreview.targetStatRanks?.vida?.value,
+                tai:  previewStats.tai  ?? feedPreview.targetStatRanks?.tai?.value,
+                nin:  previewStats.nin  ?? feedPreview.targetStatRanks?.nin?.value,
+                statRanks: feedPreview.targetStatRanks
+              };
+              const levelUp = (feedPreview.previewLevel || 1) > (targetCardForFeed.level || 1);
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#111827', border: '1px solid #334155', borderRadius: '8px', padding: '8px 10px' }}>
+                  <span style={{ fontSize: '12px', color: '#93c5fd', fontWeight: 'bold' }}>
+                    ✨ +{feedPreview.totalXpGanha || 0} XP
+                    {levelUp ? ` · Nvl ${targetCardForFeed.level || 1} → ${feedPreview.previewLevel}` : ` · Nvl ${feedPreview.previewLevel || 1}`}
+                  </span>
+                  <OverallRankBadge card={previewCard} />
+                  <CardStatsCompact card={previewCard} fontSize="11px" gap="6px" />
+                </div>
+              );
+            })()}
+            <button onClick={handleConfirmFeed} disabled={processing} style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+              {processing ? '⏳ A processar...' : 'Alimentar'}
+            </button>
+          </div>
         )}
       </div>
 

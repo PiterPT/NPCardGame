@@ -7,6 +7,11 @@ const crypto = require('crypto');
  * 25 ranks, pos 0 (F) → 24 (SSS+). Pesos inteiros, unidade 0,00001%.
  * Sorteio: crypto.randomInt(0, TOTAL_WEIGHT) no servidor. Nunca no cliente.
  *
+ * Multiplicadores: seguem a **curva balanceada aprovada (R1-BAL-1)**, divergindo da
+ * tabela original `.opencode/sistema_de_ranks_e_multiplicadores (1).md`. Pesos, posições,
+ * códigos, nomes, dropPercent e total 10.000.000 (D+ +209, B2) mantêm-se intactos.
+ * Âmbito R1-BAL-1: aplica-se apenas a rolagens futuras (sem migração/recálculo de cartas existentes).
+ *
  * Nomenclatura: statRank/statRanks. NUNCA "rarity" para isto (raridade R/SR/SSR/UR é outra coisa).
  */
 
@@ -19,36 +24,37 @@ const STAT_INSTANCE_KEYS = Object.freeze({
 });
 
 // 25 ranks: pos 0-24 (F → SSS+). Pesos finais (B2): D+ ajustado +209, total 10.000.000.
+// Multiplicadores: curva balanceada aprovada R1-BAL-1 (diverge da tabela .md original).
 const STAT_RANKS = Object.freeze([
-  Object.freeze({ pos: 0,  code: 'F',    name: 'Maligno / Maldito',         rarityLabel: 'Maligno / Maldito',         dropPercent: 0.01,     weight: 1000,    multiplier: 0.1 }),
-  Object.freeze({ pos: 1,  code: 'E-',   name: 'Péssimo',                   rarityLabel: 'Péssimo',                   dropPercent: 0.1,      weight: 10000,   multiplier: 0.25 }),
-  Object.freeze({ pos: 2,  code: 'E',    name: 'Muito Fraquejado',          rarityLabel: 'Muito Fraquejado',          dropPercent: 0.5,      weight: 50000,   multiplier: 0.4 }),
-  Object.freeze({ pos: 3,  code: 'E+',   name: 'Fraquejado',                rarityLabel: 'Fraquejado',                dropPercent: 2.0,      weight: 200000,  multiplier: 0.6 }),
-  Object.freeze({ pos: 4,  code: 'D-',   name: 'Deficiente',                rarityLabel: 'Deficiente',                dropPercent: 5.0,      weight: 500000,  multiplier: 0.75 }),
-  Object.freeze({ pos: 5,  code: 'D',    name: 'Sub-comum',                 rarityLabel: 'Sub-comum',                 dropPercent: 15.0,     weight: 1500000, multiplier: 0.9 }),
-  Object.freeze({ pos: 6,  code: 'D+',   name: 'Comum / Padrão',            rarityLabel: 'Comum / Padrão',            dropPercent: 40.0,     weight: 4000209, multiplier: 1.0 }), // B2: +209
-  Object.freeze({ pos: 7,  code: 'C-',   name: 'Incomum -',                 rarityLabel: 'Incomum -',                 dropPercent: 15.0,     weight: 1500000, multiplier: 1.3 }),
-  Object.freeze({ pos: 8,  code: 'C',    name: 'Incomum',                   rarityLabel: 'Incomum',                   dropPercent: 10.0,     weight: 1000000, multiplier: 1.6 }),
-  Object.freeze({ pos: 9,  code: 'C+',   name: 'Incomum +',                 rarityLabel: 'Incomum +',                 dropPercent: 5.0,      weight: 500000,  multiplier: 2.0 }),
-  Object.freeze({ pos: 10, code: 'B-',   name: 'Raro -',                    rarityLabel: 'Raro -',                    dropPercent: 3.0,      weight: 300000,  multiplier: 2.5 }),
-  Object.freeze({ pos: 11, code: 'B',    name: 'Raro',                      rarityLabel: 'Raro',                      dropPercent: 2.0,      weight: 200000,  multiplier: 3.2 }),
-  Object.freeze({ pos: 12, code: 'B+',   name: 'Raro +',                    rarityLabel: 'Raro +',                    dropPercent: 1.0,      weight: 100000,  multiplier: 4.0 }),
-  Object.freeze({ pos: 13, code: 'A-',   name: 'Épico -',                   rarityLabel: 'Épico -',                   dropPercent: 0.6,      weight: 60000,   multiplier: 5.0 }),
-  Object.freeze({ pos: 14, code: 'A',    name: 'Épico',                     rarityLabel: 'Épico',                     dropPercent: 0.4,      weight: 40000,   multiplier: 6.5 }),
-  Object.freeze({ pos: 15, code: 'A+',   name: 'Épico +',                   rarityLabel: 'Épico +',                   dropPercent: 0.2,      weight: 20000,   multiplier: 8.5 }),
-  Object.freeze({ pos: 16, code: 'S-',   name: 'Lendário -',                rarityLabel: 'Lendário -',                dropPercent: 0.1,      weight: 10000,   multiplier: 11.0 }),
-  Object.freeze({ pos: 17, code: 'S',    name: 'Lendário',                  rarityLabel: 'Lendário',                  dropPercent: 0.05,     weight: 5000,    multiplier: 14.5 }),
-  Object.freeze({ pos: 18, code: 'S+',   name: 'Lendário +',                rarityLabel: 'Lendário +',                dropPercent: 0.02,     weight: 2000,    multiplier: 19.0 }),
-  Object.freeze({ pos: 19, code: 'SS-',  name: 'Mítico -',                  rarityLabel: 'Mítico -',                  dropPercent: 0.01,     weight: 1000,    multiplier: 25.0 }),
-  Object.freeze({ pos: 20, code: 'SS',   name: 'Mítico',                    rarityLabel: 'Mítico',                    dropPercent: 0.005,    weight: 500,     multiplier: 33.0 }),
-  Object.freeze({ pos: 21, code: 'SS+',  name: 'Mítico +',                  rarityLabel: 'Mítico +',                  dropPercent: 0.002,    weight: 200,     multiplier: 44.0 }),
-  Object.freeze({ pos: 22, code: 'SSS-', name: 'Transcendental',            rarityLabel: 'Transcendental',            dropPercent: 0.0008,   weight: 80,      multiplier: 60.0 }),
-  Object.freeze({ pos: 23, code: 'SSS',  name: 'Divino',                    rarityLabel: 'Divino',                    dropPercent: 0.0001,   weight: 10,      multiplier: 80.0 }),
-  Object.freeze({ pos: 24, code: 'SSS+', name: 'Absoluto / Singularidade',  rarityLabel: 'Absoluto / Singularidade',  dropPercent: 0.00001,  weight: 1,       multiplier: 100.0 }),
+  Object.freeze({ pos: 0,  code: 'F',    name: 'Maligno / Maldito',         rarityLabel: 'Maligno / Maldito',         dropPercent: 0.01,     weight: 1000,    multiplier: 0.70 }),
+  Object.freeze({ pos: 1,  code: 'E-',   name: 'Péssimo',                   rarityLabel: 'Péssimo',                   dropPercent: 0.1,      weight: 10000,   multiplier: 0.75 }),
+  Object.freeze({ pos: 2,  code: 'E',    name: 'Muito Fraquejado',          rarityLabel: 'Muito Fraquejado',          dropPercent: 0.5,      weight: 50000,   multiplier: 0.80 }),
+  Object.freeze({ pos: 3,  code: 'E+',   name: 'Fraquejado',                rarityLabel: 'Fraquejado',                dropPercent: 2.0,      weight: 200000,  multiplier: 0.85 }),
+  Object.freeze({ pos: 4,  code: 'D-',   name: 'Deficiente',                rarityLabel: 'Deficiente',                dropPercent: 5.0,      weight: 500000,  multiplier: 0.90 }),
+  Object.freeze({ pos: 5,  code: 'D',    name: 'Sub-comum',                 rarityLabel: 'Sub-comum',                 dropPercent: 15.0,     weight: 1500000, multiplier: 0.95 }),
+  Object.freeze({ pos: 6,  code: 'D+',   name: 'Comum / Padrão',            rarityLabel: 'Comum / Padrão',            dropPercent: 40.0,     weight: 4000209, multiplier: 1.00 }), // B2: +209
+  Object.freeze({ pos: 7,  code: 'C-',   name: 'Incomum -',                 rarityLabel: 'Incomum -',                 dropPercent: 15.0,     weight: 1500000, multiplier: 1.05 }),
+  Object.freeze({ pos: 8,  code: 'C',    name: 'Incomum',                   rarityLabel: 'Incomum',                   dropPercent: 10.0,     weight: 1000000, multiplier: 1.10 }),
+  Object.freeze({ pos: 9,  code: 'C+',   name: 'Incomum +',                 rarityLabel: 'Incomum +',                 dropPercent: 5.0,      weight: 500000,  multiplier: 1.15 }),
+  Object.freeze({ pos: 10, code: 'B-',   name: 'Raro -',                    rarityLabel: 'Raro -',                    dropPercent: 3.0,      weight: 300000,  multiplier: 1.20 }),
+  Object.freeze({ pos: 11, code: 'B',    name: 'Raro',                      rarityLabel: 'Raro',                      dropPercent: 2.0,      weight: 200000,  multiplier: 1.28 }),
+  Object.freeze({ pos: 12, code: 'B+',   name: 'Raro +',                    rarityLabel: 'Raro +',                    dropPercent: 1.0,      weight: 100000,  multiplier: 1.36 }),
+  Object.freeze({ pos: 13, code: 'A-',   name: 'Épico -',                   rarityLabel: 'Épico -',                   dropPercent: 0.6,      weight: 60000,   multiplier: 1.45 }),
+  Object.freeze({ pos: 14, code: 'A',    name: 'Épico',                     rarityLabel: 'Épico',                     dropPercent: 0.4,      weight: 40000,   multiplier: 1.55 }),
+  Object.freeze({ pos: 15, code: 'A+',   name: 'Épico +',                   rarityLabel: 'Épico +',                   dropPercent: 0.2,      weight: 20000,   multiplier: 1.65 }),
+  Object.freeze({ pos: 16, code: 'S-',   name: 'Lendário -',                rarityLabel: 'Lendário -',                dropPercent: 0.1,      weight: 10000,   multiplier: 1.80 }),
+  Object.freeze({ pos: 17, code: 'S',    name: 'Lendário',                  rarityLabel: 'Lendário',                  dropPercent: 0.05,     weight: 5000,    multiplier: 1.95 }),
+  Object.freeze({ pos: 18, code: 'S+',   name: 'Lendário +',                rarityLabel: 'Lendário +',                dropPercent: 0.02,     weight: 2000,    multiplier: 2.10 }),
+  Object.freeze({ pos: 19, code: 'SS-',  name: 'Mítico -',                  rarityLabel: 'Mítico -',                  dropPercent: 0.01,     weight: 1000,    multiplier: 2.30 }),
+  Object.freeze({ pos: 20, code: 'SS',   name: 'Mítico',                    rarityLabel: 'Mítico',                    dropPercent: 0.005,    weight: 500,     multiplier: 2.55 }),
+  Object.freeze({ pos: 21, code: 'SS+',  name: 'Mítico +',                  rarityLabel: 'Mítico +',                  dropPercent: 0.002,    weight: 200,     multiplier: 2.85 }),
+  Object.freeze({ pos: 22, code: 'SSS-', name: 'Transcendental',            rarityLabel: 'Transcendental',            dropPercent: 0.0008,   weight: 80,      multiplier: 3.20 }),
+  Object.freeze({ pos: 23, code: 'SSS',  name: 'Divino',                    rarityLabel: 'Divino',                    dropPercent: 0.0001,   weight: 10,      multiplier: 3.60 }),
+  Object.freeze({ pos: 24, code: 'SSS+', name: 'Absoluto / Singularidade',  rarityLabel: 'Absoluto / Singularidade',  dropPercent: 0.00001,  weight: 1,       multiplier: 4.00 }),
 ]);
 
 const TOTAL_WEIGHT = 10000000;
-const SSS_MULTIPLIER = 100.0;
+const SSS_MULTIPLIER = 4.0; // R1-BAL-1 (curva balanceada; tabela .md original: 100.0)
 
 // Pesos cumulativos (pré-computados) para roll O(n) com n=25 (trivial).
 const CUMULATIVE_WEIGHTS = (() => {
