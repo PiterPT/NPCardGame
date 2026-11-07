@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL, authFetch } from '../lib/api';
+import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 
 const CLASS_META = {
   R: { label: 'R', color: '#60a5fa', border: '1px solid #3b82f6' },
@@ -192,14 +193,19 @@ export default function Gacha({ user, setUser }) {
               const meta = CLASS_META[card.classe] || { label: card.classe, color: '#aaa', border: '1px solid #444' };
               return (
                 <div key={i} style={{ background: '#121212', border: meta.border, borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '11px', background: '#333', padding: '2px 6px', borderRadius: '4px', color: meta.color, fontWeight: 'bold' }}>{meta.label}</span>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', background: '#333', padding: '2px 6px', borderRadius: '4px', color: meta.color, fontWeight: 'bold' }}>{meta.label}</span>
+                    <OverallRankBadge card={card} />
+                  </div>
                   {card.image_url ? (
                     <img src={card.image_url} alt={card.name} style={{ width: '90px', height: '110px', objectFit: 'cover', borderRadius: '4px', margin: '8px auto', display: 'block' }} />
                   ) : (
                     <div style={{ width: '90px', height: '110px', background: '#222', margin: '8px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#777' }}>Sem Img</div>
                   )}
                   <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
-                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
+                  <div style={{ marginTop: '6px' }}>
+                    <CardStatsCompact card={card} fontSize="10px" gap="4px" />
+                  </div>
                 </div>
               );
             })}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Loader from '../components/Loader';
 import { API_URL, authFetch } from '../lib/api';
+import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 import '../styles/dashboard.css';
 
 export default function Dashboard({ user, setCurrentView }) {
@@ -107,9 +108,14 @@ export default function Dashboard({ user, setCurrentView }) {
           <div className="cards-row">
             {recentCards.slice(0, 3).map((card, idx) => (
               <div key={idx} className={`mini-card ${card.classe === 'UR' ? 'ur' : ''}`}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                  <OverallRankBadge card={card} />
+                </div>
                 <img src={card.image_url || 'https://via.placeholder.com/90x115'} alt={card.name} />
                 <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#ff9900', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
-                <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
+                <div style={{ marginTop: '4px' }}>
+                  <CardStatsCompact card={card} fontSize="10px" gap="4px" showNin={false} />
+                </div>
               </div>
             ))}
           </div>
@@ -158,9 +164,15 @@ export default function Dashboard({ user, setCurrentView }) {
           <div className="cards-row">
             {recentCards.map((card, idx) => (
               <div key={idx} className={`mini-card ${card.classe === 'UR' ? 'ur' : ''}`}>
-                <span style={{ fontSize: '10px', background: '#333', padding: '1px 6px', borderRadius: '4px', color: '#ff9900', fontWeight: 'bold' }}>{card.classe || 'E'}</span>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '10px', background: '#333', padding: '1px 6px', borderRadius: '4px', color: '#ff9900', fontWeight: 'bold' }}>{card.classe || 'E'}</span>
+                  <OverallRankBadge card={card} />
+                </div>
                 <img src={card.image_url || 'https://via.placeholder.com/90x115'} alt={card.name} style={{ marginTop: '6px' }} />
                 <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
+                <div style={{ marginTop: '4px' }}>
+                  <CardStatsCompact card={card} fontSize="10px" gap="4px" />
+                </div>
               </div>
             ))}
           </div>

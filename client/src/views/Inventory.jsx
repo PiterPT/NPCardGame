@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Loader from '../components/Loader';
 import { API_URL, authFetch } from '../lib/api';
+import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 
 export default function Inventory({ user, setUser }) {
   const [cards, setCards] = useState([]);
@@ -364,13 +365,14 @@ export default function Inventory({ user, setUser }) {
                 )}
 
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '8px', marginTop: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '8px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ background: card.classe === 'UR' ? '#ffd700' : '#444', color: card.classe === 'UR' ? '#000' : '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                       {card.classe || 'E'}
                     </span>
                     <span style={{ background: '#22c55e', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                       Nvl {currentLevel}
                     </span>
+                    <OverallRankBadge card={card} />
                   </div>
 
                   {card.image_url ? (
@@ -386,10 +388,8 @@ export default function Inventory({ user, setUser }) {
                     <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold', marginBottom: '6px' }}>💰 {sellValues[card.id_card]} Ryos</div>
                   )}
 
-                  <div style={{ fontSize: '12px', color: '#ddd', display: 'flex', justifyContent: 'space-around', margin: '5px 0' }}>
-                    <span>❤️ {card.vida}</span>
-                    <span>⚔️ {card.tai}</span>
-                    <span>🌀 {card.nin}</span>
+                  <div style={{ margin: '5px 0' }}>
+                    <CardStatsCompact card={card} fontSize="11px" gap="5px" />
                   </div>
                 </div>
               </div>

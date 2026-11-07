@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as pvpCache from './pvpCache';
 import { API_URL, authFetch } from '../lib/api';
+import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 const ORANGE = '#ff9900';
 const RED = '#ef4444';
 const imgSrc = (u) => (u && u.startsWith('/') ? `${API_URL}${u}` : u);
@@ -27,9 +28,14 @@ function PlayerResultCard({ side, isWinner }) {
         {(side.cards || []).map((c, i) => (
           <div key={`${c.id_card}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#1d1d2b', borderRadius: '6px', padding: '6px' }}>
             {c.image_url && <img src={imgSrc(c.image_url)} alt={c.name} style={{ width: '36px', height: '46px', objectFit: 'cover', borderRadius: '4px' }} />}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE }}>{c.name}</div>
-              <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {c.vida} · ⚔️ {c.tai} · 🌀 {c.nin}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE }}>{c.name}</div>
+                <OverallRankBadge card={c} />
+              </div>
+              <div style={{ marginTop: '2px' }}>
+                <CardStatsCompact card={c} fontSize="10px" justify="flex-start" gap="5px" />
+              </div>
             </div>
           </div>
         ))}
@@ -106,11 +112,15 @@ function InlineNotice({ notice }) {
 
 function MiniCard({ card }) {
   if (!card) return null;
+  const showNin = card.nin != null;
   return (
     <div style={{ background: '#121212', border: '1px solid #333', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+        <OverallRankBadge card={card} />
+      </div>
       {card.image_url && <img src={imgSrc(card.image_url)} alt={card.name} style={{ width: '72px', height: '90px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />}
-      <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE, marginBottom: '2px' }}>{card.name}</div>
-      <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {card.vida} · ⚔️ {card.tai}{card.nin != null ? ` · 🌀 ${card.nin}` : ''}</div>
+      <div style={{ fontSize: '13px', fontWeight: 'bold', color: ORANGE, marginBottom: '4px' }}>{card.name}</div>
+      <CardStatsCompact card={card} fontSize="10px" gap="4px" showNin={showNin} />
     </div>
   );
 }
@@ -594,9 +604,14 @@ export default function PvpArena({ user, setUser }) {
                   }}
                   style={{ background: isSelected ? '#2e1065' : '#121212', border: isSelected ? '2px solid #a855f7' : '1px solid #444', padding: '10px', borderRadius: '8px', textAlign: 'center', cursor: 'pointer' }}
                 >
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                    <OverallRankBadge card={card} />
+                  </div>
                   <img src={imgSrc(card.image_url)} alt={card.name} style={{ width: '80px', height: '100px', objectFit: 'cover', borderRadius: '4px' }} />
                   <div style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '5px', color: ORANGE }}>{card.name}</div>
-                  <div style={{ fontSize: '11px', color: '#aaa' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
+                  <div style={{ marginTop: '4px' }}>
+                    <CardStatsCompact card={card} fontSize="10px" gap="4px" />
+                  </div>
                 </div>
               );
             })}
