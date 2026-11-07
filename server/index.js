@@ -12,9 +12,11 @@ const { pool } = require('./config/db');
 const { validateGachaConfig } = require('./config/gachaConfig');
 const app = express();
 
-// Habilita confiança em X-Forwarded-For quando atrás de proxy (Render, Vercel, etc.),
-// caso contrário o rate limit não consegue distinguir IPs reais.
-if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
+// Confia no proxy (X-Forwarded-For) em produção ou quando TRUST_PROXY=true,
+// para o rate limit identificar o IP real atrás de Render/Vercel. Em dev local fica off.
+if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 app.set('x-powered-by', false);
 
