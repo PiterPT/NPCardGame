@@ -110,6 +110,14 @@ app.use((err, req, res, next) => {
       )
     `);
 
+    // FM1 (Modo Infinito/Farm) — migração aditiva e idempotente do progresso.
+    // best_wave = recorde absoluto (ranking/diamantes); max_wave = progressão da run atual.
+    await pool.query('ALTER TABLE infinite_progress ADD COLUMN IF NOT EXISTS best_wave INT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE infinite_progress ADD COLUMN IF NOT EXISTS resets_today INT NOT NULL DEFAULT 0');
+    await pool.query('ALTER TABLE infinite_progress ADD COLUMN IF NOT EXISTS resets_day DATE');
+    await pool.query('UPDATE infinite_progress SET best_wave = max_wave WHERE best_wave < max_wave');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_infinite_best_wave ON infinite_progress (best_wave DESC)');
+
     // Nova moeda "diamantes" (gacha). Aditiva: nenhuma coluna/saldo existente é alterado.
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS diamonds INT NOT NULL DEFAULT 0');
 

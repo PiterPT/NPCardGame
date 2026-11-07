@@ -483,6 +483,29 @@ const MAX_WAVE = 10_000;            // cap absoluto por pedido
 const FARM_RATIO = 0.25;            // repeticao da onda paga 25% da recompensa do recorde
 const CLAIM_COOLDOWN_SECONDS = 20;  // minimo entre reclamacoes de recompensa
 
+// FM1: cache em memória por userId (otimização de leituras). BD é SEMPRE a fonte
+// de verdade na transação de claim (FOR UPDATE). Não persistida; TTL curto.
+const INFINITE_CACHE_TTL_MS = 60_000;
+const infiniteProgressCache = new Map();
+
+function getInfiniteCache(userId) {
+  const entry = infiniteProgressCache.get(userId);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > INFINITE_CACHE_TTL_MS) {
+    infiniteProgressCache.delete(userId);
+    return null;
+  }
+  return entry;
+}
+
+function setInfiniteCache(userId, data) {
+  infiniteProgressCache.set(userId, { ...data, ts: Date.now() });
+}
+
+function invalidateInfiniteCache(userId) {
+  infiniteProgressCache.delete(userId);
+}
+
 router.post('/infinite/reward', requireAuth, async (req, res) => {
   const userId = req.user.id;
   const wave = Number(req.body && req.body.wave);
@@ -497,19 +520,26 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
 
     // Progresso do jogador (linha criada a zero na primeira chamada).
     // FOR UPDATE: dois pedidos concorrentes nao podem reclamar a mesma onda nova em paralelo.
+    // BD é a fonte de verdade (cache em memória só para leituras; ignorado aqui).
     await client.query(
       `INSERT INTO infinite_progress (id_user, max_wave) VALUES ($1, 0)
        ON CONFLICT (id_user) DO NOTHING`,
       [userId]
     );
-    const prog = await client.query('SELECT max_wave, last_claim_at FROM infinite_progress WHERE id_user = $1 FOR UPDATE', [userId]);
+    const prog = await client.query(
+      'SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day FROM infinite_progress WHERE id_user = $1 FOR UPDATE',
+      [userId]
+    );
     if (prog.rows.length === 0) throw new Error('progresso ausente');
 
     const maxWave = prog.rows[0].max_wave || 0;
+    const bestWave = prog.rows[0].best_wave || 0;
     const lastClaim = prog.rows[0].last_claim_at;
+    const resetsToday = prog.rows[0].resets_today || 0;
+    const resetsDay = prog.rows[0].resets_day || null;
 
     if (wave > maxWave + 1) {
-      // Nao se pode saltar ondas: so se alcanca a onda N depois de passar pela N-1.
+      // Nao se pode saltar ondas: so se alcanca a onda N depois de passar pela N-1 (progressão da run).
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Progresso inconsistente: complete primeiro a onda #${maxWave + 1}.` });
     }
@@ -522,13 +552,20 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
       });
     }
 
-    // Recompensa cheia nas ondas novas; repeticoes pagam uma fraccao (farm limitado).
-    const isRecord = wave === maxWave + 1;
-    const rewardRyos = isRecord ? wave * 150 : Math.round(wave * 150 * FARM_RATIO);
+    // FM1 (Opção 1, A): recorde absoluto = wave > best_wave.
+    // Recorde: Ryos completos + diamantes max(1, floor(wave/10)).
+    // Repeat (inclui waves <= best_wave, mesmo após reset com max_wave a 0): Ryos 25%, 0 diamantes.
+    const isRecordReward = wave > bestWave;
+    const rewardRyos = isRecordReward ? wave * 150 : Math.round(wave * 150 * FARM_RATIO);
+    const rewardDiamonds = isRecordReward ? Math.max(1, Math.floor(wave / 10)) : 0;
 
+    const newBestWave = Math.max(bestWave, wave);
+    const newMaxWave = Math.max(maxWave, wave);
+
+    // Atualização atómica: coins + diamonds na mesma transação.
     const upd = await client.query(
-      'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2 RETURNING coins',
-      [rewardRyos, userId]
+      'UPDATE users SET coins = COALESCE(coins, 0) + $1, diamonds = COALESCE(diamonds, 0) + $2 WHERE id_user = $3 RETURNING coins, diamonds',
+      [rewardRyos, rewardDiamonds, userId]
     );
     if (upd.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -536,13 +573,32 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
     }
 
     await client.query(
-      'UPDATE infinite_progress SET max_wave = $1, last_claim_at = now() WHERE id_user = $2',
-      [Math.max(maxWave, wave), userId]
+      'UPDATE infinite_progress SET max_wave = $1, best_wave = $2, last_claim_at = now() WHERE id_user = $3',
+      [newMaxWave, newBestWave, userId]
     );
 
     await client.query('COMMIT');
 
-    res.json({ success: true, rewardRyos, isRecord, newCoins: upd.rows[0].coins });
+    // Atualiza cache em memória após claim bem-sucedido (BD continua a ser a fonte de verdade).
+    setInfiniteCache(userId, {
+      max_wave: newMaxWave,
+      best_wave: newBestWave,
+      last_claim_at: new Date().toISOString(),
+      resets_today: resetsToday,
+      resets_day: resetsDay
+    });
+
+    // Resposta retrocompatível + novos campos FM1.
+    res.json({
+      success: true,
+      rewardRyos,
+      rewardDiamonds,
+      isRecord: isRecordReward,
+      newCoins: upd.rows[0].coins,
+      newDiamonds: upd.rows[0].diamonds,
+      maxWave: newMaxWave,
+      bestWave: newBestWave
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao atribuir recompensa do modo infinito:', err);
