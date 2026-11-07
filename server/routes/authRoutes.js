@@ -117,4 +117,56 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
+// ==========================================
+// ROTA DE PEDIDO DE RECUPERAÇÃO DE PALAVRA-PASSE
+// ==========================================
+router.post('/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Por favor, introduz o teu email.' });
+  }
+
+  try {
+    const user = await withClient(async (client) => {
+      const result = await client.query('SELECT id_user, email FROM users WHERE email = $1', [email]);
+      return result.rows[0] || null;
+    });
+
+    // Por razões de segurança, não revelamos se o email existe ou não na BD
+    if (!user) {
+      return res.json({ message: 'Se o email existir, as instruções foram enviadas.' });
+    }
+
+    // TODO: Gerar token de recuperação, guardar na BD (com expiração) e enviar email (ex: Nodemailer / SendGrid)
+
+    res.json({ message: 'Se o email existir, as instruções foram enviadas.' });
+  } catch (error) {
+    console.error('Erro no pedido de recuperação:', error);
+    res.status(500).json({ error: 'Erro interno ao processar recuperação.' });
+  }
+});
+
+// ==========================================
+// ROTA DE REDEFINIÇÃO DE PALAVRA-PASSE
+// ==========================================
+router.post('/auth/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: 'Dados incompletos para redefinição.' });
+  }
+
+  try {
+    // 1. Validar o token de recuperação (verificar se é válido e não expirou)
+    // 2. Encriptar a nova palavra-passe com bcrypt.hash(newPassword, SALT_ROUNDS)
+    // 3. Atualizar na tabela 'users' e invalidar o token
+
+    res.json({ message: 'Palavra-passe alterada com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao redefinir palavra-passe:', error);
+    res.status(500).json({ error: 'Erro interno ao redefinir palavra-passe.' });
+  }
+});
+
 module.exports = router;
