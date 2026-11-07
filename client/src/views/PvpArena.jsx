@@ -437,39 +437,206 @@ export default function PvpArena({ user, setUser }) {
         </div>
       )}
 
-      {/* TAB 4: MODO INFINITO (inalterado) */}
-      {tab === 'infinite' && (
-        <div style={{ ...PANEL, textAlign: 'center' }}>
-          <h3 style={{ color: ORANGE, marginBottom: '10px' }}>🌀 Modo Infinito (Farm de Ryos)</h3>
-          {!infiniteActive ? (
-            <div>
-              <p style={{ color: '#aaa', marginBottom: '20px' }}>Enfrenta vagas contínuas de cartas inimigas para acumular recompensas em Ryos cada vez maiores.</p>
-              <button onClick={() => setInfiniteActive(true)} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '12px 25px', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>
-                Iniciar Modo Infinito 🚀
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div style={{ background: '#121212', padding: '15px', borderRadius: '8px', display: 'inline-block', marginBottom: '20px' }}>
-                <h4 style={{ color: '#22c55e' }}>Onda Atual: #{infiniteWave}</h4>
-                <p style={{ color: ORANGE }}>Inimigo: {enemyWaveCard.name}</p>
-                <div style={{ fontSize: '13px', color: '#aaa' }}>❤️ HP: {enemyWaveCard.vida} | ⚔️ Tai: {enemyWaveCard.tai}</div>
-              </div>
+      {/* TAB 4: MODO INFINITO (APRIMORADO) */}
+{tab === 'infinite' && (
+  <div style={{ ...PANEL, textAlign: 'center', maxWidth: '650px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+      <h3 style={{ color: ORANGE, margin: 0 }}>🌀 Modo Infinito (Farm de Ryos)</h3>
+      
+      {/* Botão de Toggle do Modo Automático */}
+      {infiniteActive && (
+        <button
+          onClick={() => setAutoMode(!autoMode)}
+          style={{
+            background: autoMode ? '#eab308' : '#334155',
+            color: '#fff',
+            border: 'none',
+            padding: '6px 14px',
+            borderRadius: '20px',
+            fontSize: '13px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: autoMode ? '0 0 10px rgba(234, 179, 8, 0.4)' : 'none'
+          }}
+        >
+          {autoMode ? '⚡ Auto-Farm: LIGADO' : '⏸️ Auto-Farm: DESLIGADO'}
+        </button>
+      )}
+    </div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
-                <button onClick={() => handleInfiniteFight(true)} style={{ background: '#22c55e', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Atacar & Vencer Onda ⚔️
-                </button>
-                <button onClick={() => handleInfiniteFight(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Fugir / Desistir
-                </button>
+    {!infiniteActive ? (
+      <div style={{ padding: '20px 0' }}>
+        <p style={{ color: '#aaa', marginBottom: '20px', lineHeight: '1.5' }}>
+          Enfrenta vagas contínuas de cartas inimigas para acumular recompensas em Ryos cada vez maiores.
+        </p>
+        <button 
+          onClick={() => setInfiniteActive(true)} 
+          style={{ 
+            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', 
+            color: '#fff', 
+            border: 'none', 
+            padding: '14px 28px', 
+            borderRadius: '8px', 
+            fontWeight: 'bold', 
+            fontSize: '16px', 
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
+          }}
+        >
+          Iniciar Modo Infinito 🚀
+        </button>
+      </div>
+    ) : (
+      <div>
+        {/* Card do Inimigo & Informação da Onda */}
+        <div style={{ 
+          background: '#121212', 
+          border: '1px solid #27272a',
+          padding: '18px', 
+          borderRadius: '12px', 
+          marginBottom: '15px' 
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ color: '#22c55e', fontWeight: 'bold', fontSize: '16px' }}>
+              Onda Atual: #{infiniteWave}
+            </span>
+            <span style={{ color: '#eab308', fontSize: '13px', fontWeight: 'bold' }}>
+              💰 Recompensa: {infiniteWave * 150} Ryos
+            </span>
+          </div>
+
+          <h4 style={{ color: ORANGE, fontSize: '18px', margin: '5px 0' }}>{enemyWaveCard.name}</h4>
+          
+          {/* Barra de Vida Visual */}
+          <div style={{ width: '100%', background: '#27272a', borderRadius: '6px', height: '10px', margin: '10px 0', overflow: 'hidden' }}>
+            <div style={{ 
+              width: `${Math.max(0, Math.min(100, (enemyWaveCard.vida / enemyWaveCard.maxVida) * 100))}%`, 
+              background: '#ef4444', 
+              height: '100%', 
+              transition: 'width 0.3s ease' 
+            }} />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: '13px', color: '#aaa', marginTop: '8px' }}>
+            <span>❤️ HP: <strong style={{ color: '#fff' }}>{enemyWaveCard.vida}</strong></span>
+            <span>⚔️ Taijutsu: <strong style={{ color: '#fff' }}>{enemyWaveCard.tai}</strong></span>
+          </div>
+        </div>
+
+        {/* Histórico / Combat Log */}
+        <div style={{
+          background: '#09090b',
+          border: '1px solid #27272a',
+          borderRadius: '8px',
+          padding: '12px',
+          height: '140px',
+          overflowY: 'auto',
+          textAlign: 'left',
+          marginBottom: '15px',
+          fontFamily: 'monospace',
+          fontSize: '12px'
+        }}>
+          {battleLogs && battleLogs.length > 0 ? (
+            battleLogs.map((log, index) => (
+              <div key={index} style={{ color: log.type === 'player' ? '#60a5fa' : log.type === 'enemy' ? '#f87171' : '#facc15', marginBottom: '4px' }}>
+                {log.text}
               </div>
+            ))
+          ) : (
+            <div style={{ color: '#52525b', textAlign: 'center', paddingTop: '40px' }}>
+              Pronto para iniciar o combate da Onda #{infiniteWave}...
             </div>
           )}
         </div>
-      )}
+
+        {/* Ações */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+          <button 
+            onClick={() => handleInfiniteFight(true)} 
+            disabled={isFighting || autoMode}
+            style={{ 
+              background: isFighting || autoMode ? '#4b5563' : '#22c55e', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '10px 20px', 
+              borderRadius: '6px', 
+              fontWeight: 'bold', 
+              cursor: isFighting || autoMode ? 'not-allowed' : 'pointer',
+              opacity: isFighting || autoMode ? 0.6 : 1
+            }}
+          >
+            {isFighting ? 'A Combater... ⚔️' : 'Atacar Onda ⚔️'}
+          </button>
+
+          <button 
+            onClick={() => handleInfiniteFight(false)} 
+            disabled={isFighting}
+            style={{ 
+              background: '#ef4444', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '10px 20px', 
+              borderRadius: '6px', 
+              fontWeight: 'bold', 
+              cursor: isFighting ? 'not-allowed' : 'pointer' 
+            }}
+          >
+            Fugir / Desistir
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
       {battleResult && <BattleResultModal battle={battleResult} onClose={() => setBattleResult(null)} />}
     </div>
   );
 }
+const [autoMode, setAutoMode] = useState(false);
+const [isFighting, setIsFighting] = useState(false);
+const [battleLogs, setBattleLogs] = useState([]);
+
+// Loop do Modo Automático
+useEffect(() => {
+  let timer;
+  if (autoMode && infiniteActive && !isFighting) {
+    timer = setTimeout(() => {
+      handleInfiniteFight(true);
+    }, 1500); // Aguarda 1.5s entre cada vaga no modo auto
+  }
+  return () => clearTimeout(timer);
+}, [autoMode, infiniteActive, isFighting, infiniteWave]);
+
+// Função de Luta com Combate por Turnos / Log Gradual
+const handleInfiniteFight = async (shouldAttack) => {
+  if (!shouldAttack) {
+    // Lógica para desistir/fugir
+    setInfiniteActive(false);
+    setAutoMode(false);
+    setBattleLogs([]);
+    return;
+  }
+
+  setIsFighting(true);
+  setBattleLogs([]);
+
+  // Simulação de Turnos (exemplo de 2 ataques)
+  setBattleLogs(prev => [...prev, { text: `⚔️ Iniciaste o combate contra ${enemyWaveCard.name}!`, type: 'info' }]);
+  
+  await new Promise(r => setTimeout(r, 600));
+  setBattleLogs(prev => [...prev, { text: `💥 Usaste [Rasengan] e causaste ${myCard.tai * 1.5} de dano!`, type: 'player' }]);
+
+  await new Promise(r => setTimeout(r, 600));
+  setBattleLogs(prev => [...prev, { text: `🛡️ ${enemyWaveCard.name} contra-atacou causando ${enemyWaveCard.tai} de dano!`, type: 'enemy' }]);
+
+  await new Promise(r => setTimeout(r, 600));
+  setBattleLogs(prev => [...prev, { text: `✨ Derrotaste ${enemyWaveCard.name}! Ganhaste ${infiniteWave * 150} Ryos!`, type: 'info' }]);
+
+  // Avança para a próxima onda
+  setInfiniteWave(prev => prev + 1);
+  setIsFighting(false);
+};

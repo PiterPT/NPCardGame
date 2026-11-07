@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Inventory from './views/Inventory';
@@ -17,7 +17,12 @@ export default function App() {
 
   const handleUpdateUser = (updatedData) => {
     setUser(prev => {
-      const newUser = { ...prev, ...updatedData };
+      // Gacha, Inventario, Combate e Arena chamam setUser(prev => ({ ...prev, coins })) (funcao);
+      // outros podem passar um objeto. Suporta as duas formas.
+      const patch = typeof updatedData === 'function' ? updatedData(prev) : updatedData;
+      // Sem alteracoes reais: devolve o mesmo estado (evita re-renders e novos pedidos desnecessarios).
+      if (!patch || Object.keys(patch).every(k => prev[k] === patch[k])) return prev;
+      const newUser = { ...prev, ...patch };
       localStorage.setItem('user', JSON.stringify(newUser));
       return newUser;
     });
@@ -28,6 +33,37 @@ export default function App() {
     setUser(null);
     setCurrentView('dashboard');
   };
+
+  // Presenca online: envia um sinal ao servidor ao entrar e depois de 4 em 4 minutos (o servidor considera
+  // online quem renovou nos ultimos 10). So renova com a pagina visivel: separador escondido deixa de renovar
+  // e passa a offline ao fim de 10 minutos.
+  const presenceUserId = user ? (user.id_user || user.id) : null;
+  useEffect(() => {
+    if (!presenceUserId) return undefined;
+    const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
+    let lastBeat = 0;
+
+    const beat = () => {
+      if (document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (now - lastBeat < 30_000) return; // nunca mais de um sinal por 30 s
+      lastBeat = now;
+      fetch(`${API_URL}/api/presence/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: Number(presenceUserId) })
+      }).catch(() => { /* sem ligacao: tenta no proximo ciclo */ });
+    };
+
+    beat();
+    const timer = setInterval(beat, 4 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') beat(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [presenceUserId]);
 
   const handleNavClick = (view) => {
     setCurrentView(view);
