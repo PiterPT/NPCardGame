@@ -8,7 +8,7 @@ const { requireAuth } = require('../middleware/auth');
 // ==========================================
 
 // Inclui as classes usadas no painel de admin (E, R, SR, SSR, UR) e as antigas (D, C, B, A, S).
-const SELL_RYOS = { E: 100, D: 250, C: 500, B: 1000, A: 2500, S: 5000, R: 500, SR: 1500, SSR: 5000, UR: 15000 };
+const SELL_RYOS = { E: 100, D: 250, C: 500, B: 1000, A: 2500, S: 5000, R: 120, SR: 220, SSR: 600, UR: 1500 };
 const FEED_XP   = { E: 50,  D: 100, C: 250, B: 500,  A: 1000, S: 2000, R: 250, SR: 750,  SSR: 2000, UR: 5000 };
 const STAT_GROWTH_PER_LEVEL = 0.05; // +5% dos atributos base por nível ganho
 

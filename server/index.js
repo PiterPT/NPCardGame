@@ -9,6 +9,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const { pool } = require('./config/db');
+const { validateGachaConfig } = require('./config/gachaConfig');
 const app = express();
 
 // Habilita confiança em X-Forwarded-For quando atrás de proxy (Render, Vercel, etc.),
@@ -92,8 +93,13 @@ app.use((err, req, res, next) => {
     .json({ error: err.type === 'entity.too.large' ? 'Payload demasiado grande.' : 'Erro interno do servidor.' });
 });
 
-// Tabela de progresso do Modo Infinito (migracacao simples: criada apenas se nao existir).
-// Sem ela, /api/infinite/reward nao consegue registrar e limitar progresso por utilizador.
+// Migração principal (idempotente: criada/modificada apenas quando falta).
+// - infinite_progress: progresso do Modo Infinito.
+// - gacha_pity: pity por (utilizador, banner) em diamantes gastos desde o último SSR.
+// - gacha_pulls: log de auditoria — 1 linha por carta puxada.
+// - users.diamonds: moeda nova do gacha (sem valor por defeito: os diamantes são
+//   distribuídos pelo admin / futuras recompensas; contas existentes ficam a 0).
+// - Validação do gachaConfig: config inválida impede o arranque (throw apanha aqui embaixo).
 (async () => {
   try {
     await pool.query(`
@@ -103,8 +109,43 @@ app.use((err, req, res, next) => {
         last_claim_at TIMESTAMPTZ
       )
     `);
+
+    // Nova moeda "diamantes" (gacha). Aditiva: nenhuma coluna/saldo existente é alterado.
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS diamonds INT NOT NULL DEFAULT 0');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS gacha_pity (
+        id_user INTEGER NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
+        banner_id SMALLINT NOT NULL,
+        diamonds_since_ssr INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (id_user, banner_id)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS gacha_pulls (
+        id BIGSERIAL PRIMARY KEY,
+        id_user INTEGER NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
+        banner_id SMALLINT NOT NULL,
+        times SMALLINT NOT NULL,
+        cost INTEGER NOT NULL,
+        dropped_class TEXT NOT NULL,
+        dropped_card_id INTEGER NOT NULL,
+        diamonds_total INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(
+      'CREATE INDEX IF NOT EXISTS idx_gacha_pulls_user ON gacha_pulls (id_user, banner_id, created_at DESC)'
+    );
+
+    // Config do gacha tem de ser válida antes do primeiro pull da vida do servidor.
+    validateGachaConfig();
+    console.log('✅ Migrações de BD aplicadas e gachaConfig validada.');
   } catch (err) {
-    console.error('Erro ao criar a tabela infinite_progress:', err.message);
+    // Config invalida ou BD inacessível: não levantar o serviço a meio do jogo.
+    console.error('❌ Falha no arranque (migrações/validação do gacha):', err.message);
+    process.exit(1);
   }
 })();
 

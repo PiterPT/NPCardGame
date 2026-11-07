@@ -1,189 +1,208 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { API_URL, authFetch } from '../lib/api';
 
-export default function Gacha({ user, setUser }) {
-  const [selectedBanner, setSelectedBanner] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [pulledCards, setPulledCards] = useState(null);
-  const [animating, setAnimating] = useState(false);
+const CLASS_META = {
+  R: { label: 'R', color: '#60a5fa', border: '1px solid #3b82f6' },
+  SR: { label: 'SR', color: '#c084fc', border: '2px solid #a855f7' },
+  SSR: { label: 'SSR', color: '#fbbf24', border: '2px solid #f59e0b' }
+};
 
-  // Definição visual e de custos dos 3 banners no frontend
-  const banners = {
-    1: {
-      name: "Portal Gennin (Iniciante)",
-      description: "Banner ideal para novos ninjas. Maior probabilidade de cartas comuns.",
-      cost1x: 200,
-      cost10x: 1800,
-      color: "from-cyan-600 to-blue-700",
-      borderColor: "border-cyan-500/40",
-      probabilities: [
-        { rarity: 'Comum', pct: '60%' },
-        { rarity: 'Incomum', pct: '25%' },
-        { rarity: 'Rara', pct: '10%' },
-        { rarity: 'Épica', pct: '4%' },
-        { rarity: 'Lendária', pct: '1%' }
-      ]
-    },
-    2: {
-      name: "Portal Chunnin (Equilibrado)",
-      description: "Probabilidades equilibradas com melhores chances para cartas Raras e Épicas.",
-      cost1x: 350,
-      cost10x: 3200,
-      color: "from-emerald-600 to-teal-700",
-      borderColor: "border-emerald-500/40",
-      probabilities: [
-        { rarity: 'Comum', pct: '40%' },
-        { rarity: 'Incomum', pct: '30%' },
-        { rarity: 'Rara', pct: '20%' },
-        { rarity: 'Épica', pct: '8%' },
-        { rarity: 'Lendária', pct: '2%' }
-      ]
-    },
-    3: {
-      name: "Portal Hokage (Lendário)",
-      description: "Banner de elite focado em cartas de alta raridade (Épicas e Lendárias).",
-      cost1x: 600,
-      cost10x: 5500,
-      color: "from-amber-600 to-orange-700",
-      borderColor: "border-amber-500/40",
-      probabilities: [
-        { rarity: 'Comum', pct: '20%' },
-        { rarity: 'Incomum', pct: '25%' },
-        { rarity: 'Rara', pct: '30%' },
-        { rarity: 'Épica', pct: '15%' },
-        { rarity: 'Lendária', pct: '10%' }
-      ]
+const fmtPct = (p) => {
+  const value = (p * 100).toFixed(2);
+  return `${value.replace(/\.?0+$/, '')}%`;
+};
+
+export default function Gacha({ user, setUser }) {
+  const [banners, setBanners] = useState(null);
+  const [selectedBannerId, setSelectedBannerId] = useState(1);
+  const [pulledCards, setPulledCards] = useState(null);
+  const [pulling, setPulling] = useState(false);
+  const [loadingBanners, setLoadingBanners] = useState(true);
+  const [error, setError] = useState('');
+
+  // Carregar a configuração REAL do servidor (taxas, custos, pity).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/api/gacha/banners`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Erro ao carregar banners.');
+        if (active) setBanners(data.banners);
+      } catch (err) {
+        if (active) setError(err.message);
+      } finally {
+        if (active) setLoadingBanners(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const banner = banners?.find((b) => b.id === selectedBannerId) || null;
+  const diamonds = user?.diamonds ?? 0;
+
+  const handlePull = async (times) => {
+    if (!banner || pulling) return;
+    const cost = times === 1 ? banner.cost1x : banner.cost10x;
+
+    if (diamonds < cost) {
+      setError(`Diamantes insuficientes: precisas de ${cost} 💎 e tens ${diamonds} 💎.`);
+      return;
+    }
+
+    setError('');
+    setPulling(true);
+    setPulledCards(null);
+
+    try {
+      const response = await authFetch(`${API_URL}/api/gacha/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bannerId: selectedBannerId, times })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao realizar o sorteio.');
+
+      setPulledCards(data.pulledCards);
+      setUser((prev) => ({
+        ...prev,
+        coins: data.remainingCoins,
+        diamonds: data.remainingDiamonds
+      }));
+
+      // Atualizar o medidor de pity com o valor real devolvido pelo servidor.
+      setBanners((prevBanners) => prevBanners.map((b) => (
+        b.id === selectedBannerId
+          ? { ...b, pity: { ...b.pity, diamondsSinceSsr: data.pity.diamondsSinceSsr } }
+          : b
+      )));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPulling(false);
     }
   };
 
-  const currentBanner = banners[selectedBanner];
-
-const handlePull = async (times) => {
-  const cost = times === 1 ? currentBanner.cost1x : currentBanner.cost10x;
-  
-  if (user.coins < cost) {
-    alert("Ryo insuficiente para realizar esta invocação!");
-    return;
+  if (loadingBanners) {
+    return <div style={{ padding: '40px', textAlign: 'center', color: '#fff' }}>A carregar banners…</div>;
   }
 
-  setLoading(true);
-  setAnimating(true);
-  setPulledCards(null);
-
-  try {
-    // Pedido autenticado: o servidor usa o jogador do token. O envio do user_id/admin-id
-    // pelo cliente foi removido (não é seguro nem permitido pelo servidor).
-    const response = await authFetch(`${API_URL}/api/gacha/pull`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bannerId: selectedBanner, times })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Erro ao realizar o sorteio.');
-    }
-
-    setTimeout(() => {
-      setPulledCards(data.pulledCards);
-      setUser(prev => ({ ...prev, coins: data.remainingCoins }));
-      
-      const stored = JSON.parse(localStorage.getItem('user')) || {};
-      stored.coins = data.remainingCoins;
-      localStorage.setItem('user', JSON.stringify(stored));
-      
-      setAnimating(false);
-      setLoading(false);
-    }, 1200);
-
-  } catch (err) {
-    alert(err.message);
-    setAnimating(false);
-    setLoading(false);
+  if (!banner) {
+    return <div style={{ padding: '40px', textAlign: 'center', color: '#f87171' }}>{error || 'Banners indisponíveis.'}</div>;
   }
-};
+
+  const pity = banner.pity;
+  const pityPct = Math.min(100, (pity.diamondsSinceSsr / pity.hardDiamonds) * 100);
+  const pityLeft = Math.max(0, pity.hardDiamonds - pity.diamondsSinceSsr);
 
   return (
-    <div style={{ padding: '20px', color: '#fff', maxWidth: '900px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <div style={{ padding: '20px', color: '#fff', maxWidth: '960px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <h2 style={{ color: '#ff9900', textAlign: 'center', marginBottom: '20px' }}>🔮 Portal de Invocação Gacha</h2>
 
-      {/* Seletor de Banners */}
+      {/* Seletor de banners (nomes vindos do servidor) */}
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px', flexWrap: 'wrap' }}>
-        {[1, 2, 3].map(id => (
+        {banners.map((b) => (
           <button
-            key={id}
-            onClick={() => { setSelectedBanner(id); setPulledCards(null); }}
+            key={b.id}
+            onClick={() => { setSelectedBannerId(b.id); setPulledCards(null); setError(''); }}
             style={{
               padding: '10px 20px',
-              background: selectedBanner === id ? '#ff9900' : '#1e1e2e',
-              color: selectedBanner === id ? '#000' : '#fff',
+              background: selectedBannerId === b.id ? '#ff9900' : '#1e1e2e',
+              color: selectedBannerId === b.id ? '#000' : '#fff',
               border: '1px solid #ff9900',
               borderRadius: '8px',
               fontWeight: 'bold',
               cursor: 'pointer'
             }}
           >
-            {banners[id].name}
+            {b.name}
           </button>
         ))}
       </div>
 
-      {/* Caixa do Banner Ativo */}
       <div style={{ background: '#1e1e2e', border: '2px solid #ff9900', borderRadius: '12px', padding: '25px', textAlign: 'center', marginBottom: '25px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
-        <h3 style={{ color: '#ff9900', fontSize: '22px', marginBottom: '10px' }}>{currentBanner.name}</h3>
-        <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '20px' }}>{currentBanner.description}</p>
+        <h3 style={{ color: '#ff9900', fontSize: '22px', marginBottom: '10px' }}>{banner.name}</h3>
 
-        {/* Tabela de Probabilidades */}
+        {/* Taxas reais por raridade */}
         <div style={{ background: '#121212', padding: '12px', borderRadius: '8px', marginBottom: '20px', display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '10px' }}>
-          {currentBanner.probabilities.map((p, idx) => (
-            <div key={idx} style={{ fontSize: '13px' }}>
-              <span style={{ color: '#aaa', display: 'block' }}>{p.rarity}</span>
-              <strong style={{ color: '#ff9900' }}>{p.pct}</strong>
+          {Object.entries(banner.probabilities).map(([classe, prob]) => (
+            <div key={classe} style={{ fontSize: '13px', textAlign: 'center' }}>
+              <span style={{ color: CLASS_META[classe]?.color || '#aaa', display: 'block', fontWeight: 'bold' }}>{classe}</span>
+              <strong style={{ color: '#fff' }}>{fmtPct(prob)}</strong>
             </div>
           ))}
         </div>
 
-        {/* Saldo e Botões de Sorteio */}
-        <div style={{ marginBottom: '15px', fontSize: '15px' }}>
-          💰 O teu Saldo: <strong style={{ color: '#ff9900' }}>{user.coins} Ryo</strong>
+        {/* Progresso do pity */}
+        <div style={{ marginBottom: '18px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#aaa', marginBottom: '6px' }}>
+            <span>Pity SSR</span>
+            <span>
+              {pity.diamondsSinceSsr} / {pity.hardDiamonds} 💎
+              {pityLeft > 0 ? ` (faltam ${pityLeft} 💎)` : ' — SSR garantido no próximo roll!'}
+            </span>
+          </div>
+          <div style={{ height: '10px', background: '#333', borderRadius: '5px', overflow: 'hidden' }}>
+            <div style={{ width: `${pityPct}%`, height: '100%', background: pityLeft === 0 ? '#f59e0b' : '#00bcd4' }} />
+          </div>
+          {pity.softDiamonds && (
+            <div style={{ fontSize: '12px', color: '#aaa', marginTop: '6px' }}>
+              Pity suave a partir de {pity.softDiamonds} 💎 (SSR +{(pity.softRateStep * 100).toFixed(1)}%/roll).
+            </div>
+          )}
+          <div style={{ fontSize: '12px', color: '#777', marginTop: '4px' }}>
+            SSR garantido em {pity.hardRolls} rolls de 1x.
+          </div>
         </div>
+
+        <div style={{ marginBottom: '15px', fontSize: '15px' }}>
+          💎 O teu saldo: <strong style={{ color: '#00bcd4' }}>{diamonds} diamantes</strong>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom: '15px', padding: '10px', borderRadius: '6px', background: 'rgba(248,113,113,0.15)', color: '#f87171', fontSize: '14px' }}>
+            {error}
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
           <button
-            disabled={loading}
+            disabled={pulling}
             onClick={() => handlePull(1)}
-            style={{ padding: '12px 25px', background: '#00bcd4', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+            style={{ padding: '12px 25px', background: '#00bcd4', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: pulling ? 'not-allowed' : 'pointer', opacity: pulling ? 0.6 : 1 }}
           >
-            {animating ? '✨ A invocar...' : `Invocação x1 (${currentBanner.cost1x} Ryo)`}
+            {pulling ? '✨ A invocar…' : `Invocação x1 (${banner.cost1x} 💎)`}
           </button>
           <button
-            disabled={loading}
+            disabled={pulling}
             onClick={() => handlePull(10)}
-            style={{ padding: '12px 25px', background: '#ff9900', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+            style={{ padding: '12px 25px', background: '#ff9900', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: pulling ? 'not-allowed' : 'pointer', opacity: pulling ? 0.6 : 1 }}
           >
-            {animating ? '✨ A invocar...' : `Invocação x10 (${currentBanner.cost10x} Ryo)`}
+            {pulling ? '✨ A invocar…' : `Invocação x10 (${banner.cost10x} 💎)`}
           </button>
         </div>
       </div>
 
-      {/* Animação / Resultados da Invocação */}
+      {/* Resultados */}
       {pulledCards && (
         <div style={{ background: '#1e1e2e', border: '1px solid #00bcd4', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
-          <h3 style={{ color: '#00bcd4', marginBottom: '15px' }}>📜 Resultado da Invocação Ninja:</h3>
+          <h3 style={{ color: '#00bcd4', marginBottom: '15px' }}>📜 Resultado da Invocação:</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '15px' }}>
-            {pulledCards.map((card, i) => (
-              <div key={i} style={{ background: '#121212', border: card.classe === 'Lendária' || card.classe === 'Épica' ? '2px solid #ffd700' : '1px solid #444', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
-                <span style={{ fontSize: '11px', background: '#333', padding: '2px 6px', borderRadius: '4px', color: '#ff9900', fontWeight: 'bold' }}>{card.classe}</span>
-                {card.image_url ? (
-                  <img src={card.image_url} alt={card.name} style={{ width: '90px', height: '110px', objectFit: 'cover', borderRadius: '4px', margin: '8px auto', display: 'block' }} />
-                ) : (
-                  <div style={{ width: '90px', height: '110px', background: '#222', margin: '8px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#777' }}>Sem Img</div>
-                )}
-                <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
-                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
-              </div>
-            ))}
+            {pulledCards.map((card, i) => {
+              const meta = CLASS_META[card.classe] || { label: card.classe, color: '#aaa', border: '1px solid #444' };
+              return (
+                <div key={i} style={{ background: '#121212', border: meta.border, borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', background: '#333', padding: '2px 6px', borderRadius: '4px', color: meta.color, fontWeight: 'bold' }}>{meta.label}</span>
+                  {card.image_url ? (
+                    <img src={card.image_url} alt={card.name} style={{ width: '90px', height: '110px', objectFit: 'cover', borderRadius: '4px', margin: '8px auto', display: 'block' }} />
+                  ) : (
+                    <div style={{ width: '90px', height: '110px', background: '#222', margin: '8px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#777' }}>Sem Img</div>
+                  )}
+                  <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
+                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>❤️ {card.vida} | ⚔️ {card.tai}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
