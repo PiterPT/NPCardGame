@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_URL, setToken } from '../lib/api';
 import '../styles/login.css';
 
 export default function Login({ onLoginSuccess }) {
@@ -14,7 +15,8 @@ export default function Login({ onLoginSuccess }) {
     setError('');
     setLoading(true); // 👈 Desativa o botão e mostra estado a processar
 
-    const endpoint = isRegister ? 'https://npcardgame.onrender.com/api/auth/register' : 'https://npcardgame.onrender.com/api/auth/login';
+    // API_URL central (antes: URL hardcoded). O servidor devolve um JWT no login E no registo.
+    const endpoint = isRegister ? `${API_URL}/api/auth/register` : `${API_URL}/api/auth/login`;
     const bodyData = isRegister ? { name, email, password } : { email, password };
 
     try {
@@ -29,6 +31,10 @@ export default function Login({ onLoginSuccess }) {
       if (!response.ok) {
         throw new Error(data.error || 'Erro na autenticação.');
       }
+
+      // O JWT devolvido pelo servidor é guardado: vai no cabeçalho Authorization
+      // de todos os pedidos (ver lib/api.js).
+      if (data.token) setToken(data.token);
 
       if (isRegister) {
         alert('Registo efetuado com sucesso! Podes fazer login.');

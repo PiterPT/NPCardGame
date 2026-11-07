@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as pvpCache from './pvpCache';
-
+import { API_URL, authFetch } from '../lib/api';
 const ORANGE = '#ff9900';
 const RED = '#ef4444';
-const API_BASE = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
-const imgSrc = (u) => (u && u.startsWith('/') ? `${API_BASE}${u}` : u);
+const imgSrc = (u) => (u && u.startsWith('/') ? `${API_URL}${u}` : u);
 const PANEL = { background: '#191926', padding: '20px', borderRadius: '10px', border: '1px solid #333' };
 
 // ---------- Cartão de resultado de batalha ----------
@@ -59,7 +58,6 @@ function BattleResultModal({ battle, onClose }) {
 
 export default function PvpArena({ user, setUser }) {
   const userId = Number(user.id_user || user.id);
-  const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
 
   const cached = (key) => pvpCache.peek(userId, key);
   const cachedUser = cached('user');
@@ -184,7 +182,7 @@ export default function PvpArena({ user, setUser }) {
   }, [autoMode, infiniteActive, isFighting, infiniteWave]);
 
   const handleMarkRead = () => {
-    fetch(`${API_URL}/api/pvp/notifications/${userId}/read`, { method: 'POST' })
+    authFetch(`${API_URL}/api/pvp/notifications/${userId}/read`, { method: 'POST' })
       .then(res => {
         if (!res.ok) throw new Error('Erro ao marcar como lidas.');
         const next = { unread: 0, notifications: notifications.notifications.map(n => ({ ...n, is_read: true })) };
@@ -207,10 +205,10 @@ export default function PvpArena({ user, setUser }) {
     const cleanCardIds = selectedDefense.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
 
     try {
-      const res = await fetch(`${API_URL}/api/pvp/defense`, {
+      const res = await authFetch(`${API_URL}/api/pvp/defense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, cardIds: cleanCardIds })
+        body: JSON.stringify({ cardIds: cleanCardIds })
       });
 
       const data = await res.json();
@@ -235,10 +233,10 @@ export default function PvpArena({ user, setUser }) {
 
     setChallenging(true);
     try {
-      const res = await fetch(`${API_URL}/api/pvp/battle`, {
+      const res = await authFetch(`${API_URL}/api/pvp/battle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attackerId: userId, defenderId: opponent.id_user })
+        body: JSON.stringify({ defenderId: opponent.id_user })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao realizar combate PvP.');
@@ -275,10 +273,10 @@ export default function PvpArena({ user, setUser }) {
       await new Promise(r => setTimeout(r, 400));
       setBattleLogs(prev => [...prev, { text: `🛡️ ${enemyWaveCard.name} contra-atacou mas a tua defesa resistiu!`, type: 'enemy' }]);
 
-      const res = await fetch(`${API_URL}/api/infinite/reward`, {
+      const res = await authFetch(`${API_URL}/api/infinite/reward`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, wave: infiniteWave })
+        body: JSON.stringify({ wave: infiniteWave })
       });
       const data = await res.json();
 

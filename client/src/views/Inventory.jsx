@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Loader from '../components/Loader';
-
-const API_URL = 'https://npcardgame.onrender.com';
+import { API_URL, authFetch } from '../lib/api';
 
 export default function Inventory({ user, setUser }) {
   const [cards, setCards] = useState([]);
@@ -34,7 +33,7 @@ export default function Inventory({ user, setUser }) {
   };
 
   const fetchInventory = async (userId) => {
-    const res = await fetch(`${API_URL}/api/user/${userId}/profile`);
+    const res = await authFetch(`${API_URL}/api/user/${userId}/profile`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao carregar o inventário.');
     setCards(prev => {
@@ -127,7 +126,7 @@ export default function Inventory({ user, setUser }) {
     let cancelled = false;
 
     const postJson = async (path, body) => {
-      const res = await fetch(`${API_URL}/api/cards/${path}`, {
+      const res = await authFetch(`${API_URL}/api/cards/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -196,7 +195,7 @@ export default function Inventory({ user, setUser }) {
     setProcessing(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/cards/sell`, {
+      const res = await authFetch(`${API_URL}/api/cards/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, cardIds: selectedCards })
@@ -225,7 +224,7 @@ export default function Inventory({ user, setUser }) {
     setProcessing(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/cards/feed`, {
+      const res = await authFetch(`${API_URL}/api/cards/feed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, targetCardId: targetCardForFeed.id_card, sacrificeCardIds })

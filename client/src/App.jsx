@@ -5,6 +5,7 @@ import Inventory from './views/Inventory';
 import PvpArena from './views/PvpArena';
 import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
+import { API_URL, authFetch, clearSession } from './lib/api';
 import './styles/global.css';
 
 export default function App() {
@@ -29,7 +30,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    clearSession(); // remove o token e o utilizador guardados
     setUser(null);
     setCurrentView('dashboard');
   };
@@ -40,7 +41,6 @@ export default function App() {
   const presenceUserId = user ? (user.id_user || user.id) : null;
   useEffect(() => {
     if (!presenceUserId) return undefined;
-    const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
     let lastBeat = 0;
 
     const beat = () => {
@@ -48,10 +48,11 @@ export default function App() {
       const now = Date.now();
       if (now - lastBeat < 30_000) return; // nunca mais de um sinal por 30 s
       lastBeat = now;
-      fetch(`${API_URL}/api/presence/heartbeat`, {
+      // Pedido autenticado (o servidor deriva o jogador do token JWT).
+      authFetch(`${API_URL}/api/presence/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: Number(presenceUserId) })
+        body: JSON.stringify({})
       }).catch(() => { /* sem ligacao: tenta no proximo ciclo */ });
     };
 

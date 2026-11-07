@@ -1,18 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-require('dotenv').config();
-
-// CORREÇÃO: o pool deixou de vir de require('../index') (dependência circular -> pool.query is not a function).
-// Passa a ser criado aqui, tal como nos restantes ficheiros de rotas.
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
-});
+const { pool } = require('../config/db');
+const { requireAuth } = require('../middleware/auth');
 
 // ==========================================
 // CONFIGURAÇÃO / FÓRMULAS
@@ -102,19 +91,18 @@ async function getOwnedCards(db, userId, ids, lock = false) {
   return result.rows;
 }
 
-const getUserId = (body) => {
-  const n = Number(body && body.userId);
-  return Number.isInteger(n) && n > 0 ? n : null;
-};
+// O userId passou a vir do token (ver middleware/auth.js). Um "userId" do corpo é ignorado,
+// senão qualquer cliente podia vender/fazer feed de cartas de outra pessoa.
+const requireUserId = (req) => req.user.id;
 
 // ==========================================
 // PREVIEWS
 // ==========================================
 
-router.post('/preview-sell', async (req, res) => {
-  const userId = getUserId(req.body);
+router.post('/preview-sell', requireAuth, async (req, res) => {
+  const userId = requireUserId(req);
   const cardIds = normalizeIds(req.body.cardIds);
-  if (!userId || cardIds.length === 0) return res.json({ totalRyos: 0, perCard: {} });
+  if (cardIds.length === 0) return res.json({ totalRyos: 0, perCard: {} });
 
   try {
     const cards = await getOwnedCards(pool, userId, cardIds);
@@ -132,11 +120,11 @@ router.post('/preview-sell', async (req, res) => {
   }
 });
 
-router.post('/preview-feed', async (req, res) => {
-  const userId = getUserId(req.body);
+router.post('/preview-feed', requireAuth, async (req, res) => {
+  const userId = requireUserId(req);
   const targetCardId = Number(req.body.targetCardId);
   const sacrificeIds = normalizeIds(req.body.sacrificeCardIds).filter((id) => id !== targetCardId);
-  if (!userId || !targetCardId || sacrificeIds.length === 0) {
+  if (!targetCardId || sacrificeIds.length === 0) {
     return res.json({ totalXpGanha: 0, previewLevel: 1, previewXp: 0, xpNeeded: 1000 });
   }
 
@@ -163,12 +151,12 @@ router.post('/preview-feed', async (req, res) => {
 // SELL (uma ou várias cartas, numa única transação)
 // ==========================================
 
-router.post('/sell', async (req, res) => {
-  const userId = getUserId(req.body);
+router.post('/sell', requireAuth, async (req, res) => {
+  const userId = requireUserId(req);
   // Aceita cardIds (lote) e cardId (compatibilidade com a versão anterior)
   const cardIds = normalizeIds(req.body.cardIds !== undefined ? req.body.cardIds : req.body.cardId);
 
-  if (!userId || cardIds.length === 0) {
+  if (cardIds.length === 0) {
     return res.status(400).json({ error: 'Faltam dados obrigatórios (userId ou cardIds).' });
   }
 
@@ -215,12 +203,12 @@ router.post('/sell', async (req, res) => {
 // FEED
 // ==========================================
 
-router.post('/feed', async (req, res) => {
-  const userId = getUserId(req.body);
+router.post('/feed', requireAuth, async (req, res) => {
+  const userId = requireUserId(req);
   const targetCardId = Number(req.body.targetCardId);
   const requestedIds = normalizeIds(req.body.sacrificeCardIds);
 
-  if (!userId || !Number.isInteger(targetCardId) || targetCardId <= 0 || requestedIds.length === 0) {
+  if (!Number.isInteger(targetCardId) || targetCardId <= 0 || requestedIds.length === 0) {
     return res.status(400).json({ error: 'Faltam dados obrigatórios para o feed.' });
   }
   if (requestedIds.includes(targetCardId)) {

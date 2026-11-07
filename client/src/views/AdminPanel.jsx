@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL, authFetch } from '../lib/api';
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -20,101 +21,118 @@ export default function AdminPanel() {
     classe: 'E'
   });
 
-  const getHeaders = () => {
-    const storedUser = localStorage.getItem('user');
-    const user = storedUser ? JSON.parse(storedUser) : null;
-    const adminId = user ? (user.id_user || user.id) : '';
-
-    return {
-      'Content-Type': 'application/json',
-      'admin-id': String(adminId)
-    };
-  };
+  const getHeaders = () => ({ 'Content-Type': 'application/json' });
 
   useEffect(() => {
     fetchUsers();
     fetchCards();
   }, []);
 
-  const fetchUsers = () => {
-    setLoadingData(true);
-    fetch('https://npcardgame.onrender.com/api/admin/users', { headers: getHeaders() })
-      .then(res => res.json())
-      .then(data => Array.isArray(data) && setUsers(data))
-      .catch(() => setErrorMsg('Erro ao carregar utilizadores.'))
-      .finally(() => setLoadingData(false));
+  // Helper: completa requisições autenticadas de admins, lançando os erros para o utilizador
+  // (antes, os erros só apareciam na consola e o painel ficava silenciosamente vazio).
+  const adminFetchJson = async (url, options = {}) => {
+    const res = await authFetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Erro do servidor (${res.status}).`);
+    return data;
   };
 
-  const fetchCards = () => {
+  const fetchUsers = async () => {
     setLoadingData(true);
-    fetch('https://npcardgame.onrender.com/api/admin/cards', { headers: getHeaders() })
-      .then(res => res.json())
-      .then(data => Array.isArray(data) && setCards(data))
-      .catch(() => setErrorMsg('Erro ao carregar cartas.'))
-      .finally(() => setLoadingData(false));
+    try {
+      const data = await adminFetchJson(`${API_URL}/api/admin/users`);
+      if (Array.isArray(data)) setUsers(data);
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const fetchCards = async () => {
+    setLoadingData(true);
+    try {
+      const data = await adminFetchJson(`${API_URL}/api/admin/cards`);
+      if (Array.isArray(data)) setCards(data);
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoadingData(false);
+    }
   };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCardForm(prev => ({ ...prev, image_url: reader.result }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    // UPLOAD VALIDADO (2 MB, imagens): antes qualquer ficheiro, de qualquer tamanho,
+    // era convertido em base64 e guardado diretamente nos dados da base de dados.
+    const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Trata-se apenas de ficheiros de imagem.');
+      return;
     }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrorMsg(`Imagem demasiado grande (${(file.size / 1024 / 1024).toFixed(1)} MB). Máximo: 2 MB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCardForm(prev => ({ ...prev, image_url: reader.result }));
+      setErrorMsg(''); // limpa erro anterior de validação, se persistisse
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleSaveCard = (e) => {
+  const handleSaveCard = async (e) => {
     e.preventDefault();
     setLoadingAction(true);
 
-    const method = cardForm.id_modelcard ? 'PUT' : 'POST';
-    const url = cardForm.id_modelcard 
-      ? `https://npcardgame.onrender.com/api/admin/cards/${cardForm.id_modelcard}` 
-      : 'https://npcardgame.onrender.com/api/admin/cards';
+    try {
+      const method = cardForm.id_modelcard ? 'PUT' : 'POST';
+      const url = cardForm.id_modelcard
+        ? `${API_URL}/api/admin/cards/${cardForm.id_modelcard}`
+        : `${API_URL}/api/admin/cards`;
 
-    fetch(url, {
-      method,
-      headers: getHeaders(),
-      body: JSON.stringify(cardForm)
-    })
-      .then(res => res.json())
-      .then(() => {
-        fetchCards();
-        setCardForm({ id_modelcard: null, name: '', vida: 500, tai: 50, nin: 200, image_url: '', classe: 'E' });
-      })
-      .catch(err => console.error('Erro ao guardar carta:', err))
-      .finally(() => setLoadingAction(false));
-  };
-
-  const handleCardDelete = (id) => {
-    if (window.confirm('Tens a certeza que queres remover este modelo de carta?')) {
-      fetch(`https://npcardgame.onrender.com/api/admin/cards/${id}`, { 
-        method: 'DELETE', 
-        headers: getHeaders() 
-      })
-        .then(() => fetchCards())
-        .catch(err => console.error('Erro ao eliminar carta:', err));
+      await adminFetchJson(url, { method, headers: getHeaders(), body: JSON.stringify(cardForm) });
+      fetchCards();
+      setCardForm({ id_modelcard: null, name: '', vida: 500, tai: 50, nin: 200, image_url: '', classe: 'E' });
+    } catch (err) {
+      setErrorMsg(`Erro ao guardar a carta: ${err.message}`);
+    } finally {
+      setLoadingAction(false);
     }
   };
 
-  const handleUserUpdate = (id, coins, role) => {
-    fetch(`https://npcardgame.onrender.com/api/admin/users/${id}`, {
-      method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify({ coins, role })
-    })
-      .then(res => res.json())
-      .then(() => fetchUsers())
-      .catch(err => console.error('Erro ao atualizar utilizador:', err));
+  const handleCardDelete = async (id) => {
+    if (!window.confirm('Tens a certeza que queres remover este modelo de carta?')) return;
+    try {
+      await adminFetchJson(`${API_URL}/api/admin/cards/${id}`, { method: 'DELETE' });
+      fetchCards();
+    } catch (err) {
+      setErrorMsg(`Erro ao eliminar a carta: ${err.message}`);
+    }
   };
 
-  const handleUserDelete = (id) => {
-    if (window.confirm('Tens a certeza que queres eliminar este utilizador?')) {
-      fetch(`https://npcardgame.onrender.com/api/admin/users/${id}`, { method: 'DELETE', headers: getHeaders() })
-        .then(() => fetchUsers())
-        .catch(err => console.error('Erro ao eliminar utilizador:', err));
+  const handleUserUpdate = async (id, coins, role) => {
+    try {
+      await adminFetchJson(`${API_URL}/api/admin/users/${id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ coins, role })
+      });
+      fetchUsers();
+    } catch (err) {
+      setErrorMsg(`Erro ao atualizar o utilizador: ${err.message}`);
+    }
+  };
+
+  const handleUserDelete = async (id) => {
+    if (!window.confirm('Tens a certeza que queres eliminar este utilizador?')) return;
+    try {
+      await adminFetchJson(`${API_URL}/api/admin/users/${id}`, { method: 'DELETE' });
+      fetchUsers();
+    } catch (err) {
+      setErrorMsg(`Erro ao eliminar o utilizador: ${err.message}`);
     }
   };
 

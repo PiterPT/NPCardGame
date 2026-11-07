@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import Loader from '../components/Loader';
+import { API_URL, authFetch } from '../lib/api';
 import '../styles/dashboard.css';
 
 export default function Dashboard({ user, setCurrentView }) {
   const [profileData, setProfileData] = useState(null);
+  const [pvpStats, setPvpStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
  useEffect(() => {
     if (!user) return;
     const userId = user.id_user || user.id;
 
-    // Usa a variável de ambiente da Vercel ou https://npcardgame.onrender.com como alternativa para desenvolvimento
-    const API_URL = import.meta.env.API_URL || 'https://npcardgame.onrender.com';
-
-    fetch(`${API_URL}/api/user/${userId}/profile`)
+    // Pedido autenticado: a rota de perfil só aceita o próprio utilizador (JWT).
+    authFetch(`${API_URL}/api/user/${userId}/profile`)
       .then(res => res.json())
       .then(data => {
         setProfileData(data);
@@ -23,6 +23,12 @@ export default function Dashboard({ user, setCurrentView }) {
         console.error("Erro ao carregar dados do Dashboard:", err);
         setLoading(false);
       });
+
+    // Estatísticas PvP reais (antes as vitórias eram um número fixo: "18").
+    authFetch(`${API_URL}/api/pvp/user/${userId}`)
+      .then(res => res.json())
+      .then(data => setPvpStats(data.stats || null))
+      .catch(() => { /* sem PvP: mantém o traço no cartão de vitórias */ });
   }, [user]);
 
   if (loading) {
@@ -83,7 +89,7 @@ export default function Dashboard({ user, setCurrentView }) {
         <div className="stat-card">
           <div className="stat-icon">🏆</div>
           <div>
-            <p className="stat-value">18</p>
+            <p className="stat-value">{pvpStats ? pvpStats.wins : '-'}</p>
             <p className="stat-label">Vitórias</p>
           </div>
         </div>

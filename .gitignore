@@ -28,3 +28,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# OpenCode
+opencode.json
+.opencode/
+
+.env.example
+

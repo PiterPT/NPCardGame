@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_URL, authFetch } from '../lib/api';
 
 export default function Gacha({ user, setUser }) {
   const [selectedBanner, setSelectedBanner] = useState(1);
@@ -70,17 +71,12 @@ const handlePull = async (times) => {
   setPulledCards(null);
 
   try {
-    const response = await fetch('https://npcardgame.onrender.com/api/gacha/pull', {
+    // Pedido autenticado: o servidor usa o jogador do token. O envio do user_id/admin-id
+    // pelo cliente foi removido (não é seguro nem permitido pelo servidor).
+    const response = await authFetch(`${API_URL}/api/gacha/pull`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'admin-id': String(user.id_user || user.id || '') // 👈 Adicionado para evitar rejeições do middleware
-      },
-      body: JSON.stringify({
-        id_user: user.id_user || user.id,
-        bannerId: selectedBanner,
-        times
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bannerId: selectedBanner, times })
     });
 
     const data = await response.json();

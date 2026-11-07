@@ -1,6 +1,7 @@
 // Cache em memoria do modulo (sobrevive a desmontagens do componente, perde-se ao recarregar a pagina).
 // Estrategia "stale-while-revalidate": mostra SEMPRE o ultimo modelo conhecido e so volta ao servidor
 // se os dados forem mais antigos que o TTL, se o "fingerprint" mudou ou se foram invalidados.
+import { authFetch } from '../lib/api';
 
 export const TTL = {
   ranking: 15_000,
@@ -57,7 +58,7 @@ export async function load(userId, key, url, { ttl, force = false, fingerprint, 
   if (!promise) {
     const gen = gens.get(key) || 0;
     promise = (async () => {
-      const res = await fetch(url, options);
+      const res = await authFetch(url, options);
       let body = null;
       try { body = await res.json(); } catch { /* corpo vazio */ }
       if (!res.ok) throw new Error((body && body.error) || `o servidor respondeu ${res.status}`);

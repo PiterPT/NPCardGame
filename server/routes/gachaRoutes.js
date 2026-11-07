@@ -1,16 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: false }
-});
+const { pool } = require('../config/db');
+const { requireAuth } = require('../middleware/auth');
 
 // Configuração dos Banners com as classes reais da base de dados ('E', 'UR', etc.)
 const BANNERS = {
@@ -49,10 +40,13 @@ function rollRarity(probabilities) {
   return 'E';
 }
 
-router.post('/gacha/pull', async (req, res) => {
-  const { id_user, bannerId, times } = req.body;
+router.post('/gacha/pull', requireAuth, async (req, res) => {
+  const { bannerId, times } = req.body;
+  // O usário identificador de destino é o do token: nunca aceitamos "id_user" do corpo,
+  // senão qualquer pessoa podia invocar em nome de outro jogador.
+  const id_user = req.user.id;
 
-  if (!id_user || !bannerId || (times !== 1 && times !== 10)) {
+  if (!bannerId || (times !== 1 && times !== 10)) {
     return res.status(400).json({ error: 'Dados inválidos para o sorteio.' });
   }
 
@@ -63,32 +57,34 @@ router.post('/gacha/pull', async (req, res) => {
 
   const totalCost = times === 1 ? banner.cost1x : banner.cost10x;
 
+  if (typeof totalCost !== 'number' || totalCost <= 0) {
+    return res.status(400).json({ error: 'Configuração de banner inválida (custo). Contacte um administrador.' });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Verificar saldo do utilizador
-    const userResult = await client.query('SELECT coins FROM users WHERE id_user = $1', [id_user]);
-    if (userResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      client.release();
-      return res.status(404).json({ error: 'Utilizador não encontrado.' });
-    }
+    // 1. Dedução ATÓMICA do saldo: uma única query que valida saldo e gasta.
+    //    Antes o saldo era lido e depois escrito como valor absoluto — dois pedidos
+    //    concorrentes passavam ambos a validação (race condition) e podiam deduzir duas
+    //    vezes ou deixar saldo negativo. "WHERE coins >= custo" fecha a porta.
+    const spend = await client.query(
+      'UPDATE users SET coins = coins - $1 WHERE id_user = $2 AND coins >= $3 RETURNING coins',
+      [totalCost, id_user, totalCost]
+    );
 
-    const currentCoins = userResult.rows[0].coins;
-    if (currentCoins < totalCost) {
+    if (spend.rows.length === 0) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).json({ error: 'Ryo insuficiente para realizar o sorteio!' });
     }
 
     // 2. Buscar modelos de cartas disponíveis
-    const modelsResult = await client.query('SELECT id_modelcard, name, vida, tai, nin, classe FROM cardmodel');
+    const modelsResult = await client.query(`SELECT id_modelcard, name, vida, tai, nin, classe FROM cardmodel`);
     const allModels = modelsResult.rows;
 
     if (allModels.length === 0) {
       await client.query('ROLLBACK');
-      client.release();
       return res.status(400).json({ error: 'Não existem cartas configuradas na base de dados.' });
     }
 
@@ -97,7 +93,7 @@ router.post('/gacha/pull', async (req, res) => {
     // 3. Executar o sorteio e realizar a inserção atómica
     for (let i = 0; i < times; i++) {
       const selectedClasse = rollRarity(banner.probabilities);
-      
+
       let matchingCards = allModels.filter(m => (m.classe || 'E').toUpperCase() === selectedClasse.toUpperCase());
       if (matchingCards.length === 0) {
         matchingCards = allModels;
@@ -107,14 +103,14 @@ router.post('/gacha/pull', async (req, res) => {
 
       // A. Inserir na tabela 'cards' vinculando ao id_cardmodel
       const cardInsert = await client.query(
-        `INSERT INTO cards (id_user, id_cardmodel, name, vidastatus, taistatus, chakrastatus) 
+        `INSERT INTO cards (id_user, id_cardmodel, name, vidastatus, taistatus, chakrastatus)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id_card`,
         [
-          id_user, 
-          randomCard.id_modelcard, 
-          randomCard.name, 
-          String(randomCard.vida), 
-          String(randomCard.tai), 
+          id_user,
+          randomCard.id_modelcard,
+          randomCard.name,
+          String(randomCard.vida),
+          String(randomCard.tai),
           String(randomCard.nin)
         ]
       );
@@ -137,24 +133,20 @@ router.post('/gacha/pull', async (req, res) => {
       });
     }
 
-    // 4. Deduzir o saldo de moedas do utilizador
-    const newCoins = currentCoins - totalCost;
-    await client.query('UPDATE users SET coins = $1 WHERE id_user = $2', [newCoins, id_user]);
-
     await client.query('COMMIT');
-    client.release();
 
     res.json({
       message: 'Sorteio realizado com sucesso!',
-      remainingCoins: newCoins,
+      remainingCoins: spend.rows[0].coins,
       pulledCards
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
-    client.release();
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Erro no processo de Gacha:', error);
     res.status(500).json({ error: 'Erro interno ao processar o sorteio.' });
+  } finally {
+    client.release();
   }
 });
 

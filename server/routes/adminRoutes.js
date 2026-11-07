@@ -1,37 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-require('dotenv').config();
+const { pool } = require('../config/db');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-  family: 4 // Força IPv4 e evita timeouts de conexão em vários alojamentos cloud
-});
+// Middleware para verificar se o utilizador tem o cargo de Admin.
+// MIGRAÇÃO: antes bastava um cabeçalho "admin-id" forjado pelo cliente (IDs sequenciais,
+// enumeráveis). Agora: JWT válido (requireAuth) + role lido FRESCO da base de dados (requireAdmin).
+const verifyAdmin = [requireAuth, requireAdmin];
 
-// Middleware para verificar se o utilizador tem o cargo de Admin
-const verifyAdmin = async (req, res, next) => {
-  const adminId = req.headers['admin-id'];
-  
-  if (!adminId) {
-    return res.status(401).json({ error: 'Acesso negado. Sem identificação.' });
-  }
-
-  try {
-    const result = await pool.query('SELECT role FROM Users WHERE id_user = $1', [adminId]);
-    if (result.rows.length === 0 || result.rows[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
-    }
-    next();
-  } catch (err) {
-    console.error('Erro no verifyAdmin:', err);
-    res.status(500).json({ error: 'Erro ao verificar permissões.' });
-  }
-};
+// CORREÇÃO: a verificação aplica-se APENAS a /admin/*.
+// Antes, router.use(verifyAdmin) sem caminho intercetava TODOS os pedidos /api/* que passassem
+// por este router (perfil, cards/sell, cards/feed, gacha...) e devolvia "Acesso negado" a utilizadores normais.
+router.use('/admin', verifyAdmin);
 
 // CORREÇÃO: a verificação aplica-se APENAS a /admin/*.
 // Antes, router.use(verifyAdmin) sem caminho intercetava TODOS os pedidos /api/* que passassem

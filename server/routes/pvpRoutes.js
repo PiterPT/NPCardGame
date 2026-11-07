@@ -1,20 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-require('dotenv').config();
-
-// CORRECAO: o pool deixou de vir de require('../index'). O index.js nao exporta nada (e a importacao seria circular),
-// pelo que pool.connect() falhava e todas as rotas PvP davam erro. Passa a ser criado aqui, como nos outros ficheiros de rotas.
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
-});
-// Sem este handler, um erro numa ligacao inativa (ex.: reinicio da BD) mata o processo Node.
-pool.on('error', (err) => console.error('Erro no pool PvP (ligacao inativa):', err.message));
+const { pool } = require('../config/db');
+const { requireAuth, requireSelf } = require('../middleware/auth');
 
 // ==========================================
 // CONFIGURACAO PvP (valores A CONFIRMAR)
@@ -157,11 +144,12 @@ const BATTLE_SELECT = `
 // ==========================================
 
 // Guardar/Atualizar deck (max 5 cartas)
-router.post('/pvp/defense', async (req, res) => {
-  const userId = toInt(req.body.userId);
+router.post('/pvp/defense', requireAuth, async (req, res) => {
+  // O deck é sempre do utilizador autenticado: o "userId" do corpo é ignorado.
+  const userId = req.user.id;
   const { cardIds } = req.body;
 
-  if (!userId || !Array.isArray(cardIds)) {
+  if (!Array.isArray(cardIds)) {
     return res.status(400).json({ error: 'Dados inválidos (userId ou cardIds ausentes).' });
   }
   const ids = cardIds.map(toInt);
@@ -178,14 +166,6 @@ router.post('/pvp/defense', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS pvp_defense (
-        id_defense SERIAL PRIMARY KEY,
-        id_user INT NOT NULL,
-        id_card INT NOT NULL
-      )
-    `);
 
     // Apenas cartas do proprio jogador.
     if (ids.length > 0) {
@@ -214,9 +194,9 @@ router.post('/pvp/defense', async (req, res) => {
 });
 
 // Dados do jogador: posicao, pontos, deck e estatisticas
-router.get('/pvp/user/:id', async (req, res) => {
-  const userId = toInt(req.params.id);
-  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+// (autenticado, e apenas os dados do próprio utilizador — antes, ":id" podia ser de quem fosse)
+router.get('/pvp/user/:id', requireAuth, requireSelf('id'), async (req, res) => {
+  const userId = req.user.id;
 
   const client = await pool.connect();
   try {
@@ -240,8 +220,8 @@ router.get('/pvp/user/:id', async (req, res) => {
 // 2. RANKING COMPLETO (ordenado por posicao)
 // ==========================================
 
-// GET /api/pvp/ranking?limit=500&offset=0
-router.get('/pvp/ranking', async (req, res) => {
+// GET /api/pvp/ranking?limit=500&offset=0  (requer autenticação)
+router.get('/pvp/ranking', requireAuth, async (req, res) => {
   const limit = Math.min(toInt(req.query.limit) || 500, 1000);
   const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
   try {
@@ -268,8 +248,10 @@ router.get('/pvp/ranking', async (req, res) => {
 // 3. BATALHA 1x1 (so contra o jogador imediatamente acima)
 // ==========================================
 
-router.post('/pvp/battle', async (req, res) => {
-  const attackerId = toInt(req.body.attackerId);
+router.post('/pvp/battle', requireAuth, async (req, res) => {
+  // O atacante é sempre o utilizador autenticado; o "attackerId" do corpo é ignorado
+  // (antes, qualquer um podia batalhar em nome de outro jogador).
+  const attackerId = req.user.id;
   const defenderId = toInt(req.body.defenderId);
 
   if (!attackerId || !defenderId) {
@@ -381,9 +363,8 @@ router.post('/pvp/battle', async (req, res) => {
 // 4. HISTORICO DE BATALHAS
 // ==========================================
 
-router.get('/pvp/history/:id', async (req, res) => {
-  const userId = toInt(req.params.id);
-  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+router.get('/pvp/history/:id', requireAuth, requireSelf('id'), async (req, res) => {
+  const userId = req.user.id;
   const limit = Math.min(toInt(req.query.limit) || 20, 50);
   try {
     const r = await pool.query(
@@ -404,9 +385,8 @@ router.get('/pvp/history/:id', async (req, res) => {
 // 5. NOTIFICACOES (apenas desafios/batalhas)
 // ==========================================
 
-router.get('/pvp/notifications/:id', async (req, res) => {
-  const userId = toInt(req.params.id);
-  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+router.get('/pvp/notifications/:id', requireAuth, requireSelf('id'), async (req, res) => {
+  const userId = req.user.id;
   try {
     const r = await pool.query(
       `SELECT n.id_notification, n.is_read, n.created_at, n.id_battle,
@@ -429,9 +409,8 @@ router.get('/pvp/notifications/:id', async (req, res) => {
   }
 });
 
-router.post('/pvp/notifications/:id/read', async (req, res) => {
-  const userId = toInt(req.params.id);
-  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+router.post('/pvp/notifications/:id/read', requireAuth, requireSelf('id'), async (req, res) => {
+  const userId = req.user.id;
   try {
     await pool.query('UPDATE pvp_notifications SET is_read = TRUE WHERE id_user = $1 AND is_read = FALSE', [userId]);
     res.json({ success: true });
@@ -446,9 +425,8 @@ router.post('/pvp/notifications/:id/read', async (req, res) => {
 // ==========================================
 
 // Lista as cartas do inventario sem o campo de imagem (que pode ter varios MB em base64).
-router.get('/pvp/cards/:id', async (req, res) => {
-  const userId = toInt(req.params.id);
-  if (!userId) return res.status(400).json({ error: 'ID inválido.' });
+router.get('/pvp/cards/:id', requireAuth, requireSelf('id'), async (req, res) => {
+  const userId = req.user.id;
   try {
     const r = await pool.query(
       `SELECT c.id_card, c.id_cardmodel, c.name, c.vidastatus, c.taistatus, c.chakrastatus, c.level, cm.classe
@@ -494,27 +472,83 @@ router.get('/pvp/card-image/:id', async (req, res) => {
 
 // ==========================================
 // 6. MODO INFINITO (Farm de Ryos e Ondeando Inimigos)
-//    -- Fora do ambito do PvP: mantido exatamente como estava --
 // ==========================================
 
-router.post('/infinite/reward', async (req, res) => {
-  const { userId, wave } = req.body;
-  const rewardRyos = wave * 150; // Recompensa aumenta por cada onda
+// Antes: o cliente mandava "wave" livre e recebia wave*150 Ryos, sem validacao de
+// progresso nem limite — o modo infinito era uma fonte inesgotavel de moedas.
+// Agora o progresso (maior onda alcancada) e guardado na BD e o pedido tem cooldown,
+// pelo que repeticoes nao acumulam moedas indefinidamente.
+
+const MAX_WAVE = 10_000;            // cap absoluto por pedido
+const FARM_RATIO = 0.25;            // repeticao da onda paga 25% da recompensa do recorde
+const CLAIM_COOLDOWN_SECONDS = 20;  // minimo entre reclamacoes de recompensa
+
+router.post('/infinite/reward', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const wave = Number(req.body && req.body.wave);
+
+  if (!Number.isInteger(wave) || wave < 1 || wave > MAX_WAVE) {
+    return res.status(400).json({ error: 'Onda inválida.' });
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2', [rewardRyos, userId]);
-    
-    const userRes = await client.query('SELECT coins FROM users WHERE id_user = $1', [userId]);
-    await client.query('COMMIT');
-    client.release();
 
-    res.json({ success: true, rewardRyos, newCoins: userRes.rows[0].coins });
+    // Progresso do jogador (linha criada a zero na primeira chamada).
+    // FOR UPDATE: dois pedidos concorrentes nao podem reclamar a mesma onda nova em paralelo.
+    await client.query(
+      `INSERT INTO infinite_progress (id_user, max_wave) VALUES ($1, 0)
+       ON CONFLICT (id_user) DO NOTHING`,
+      [userId]
+    );
+    const prog = await client.query('SELECT max_wave, last_claim_at FROM infinite_progress WHERE id_user = $1 FOR UPDATE', [userId]);
+    if (prog.rows.length === 0) throw new Error('progresso ausente');
+
+    const maxWave = prog.rows[0].max_wave || 0;
+    const lastClaim = prog.rows[0].last_claim_at;
+
+    if (wave > maxWave + 1) {
+      // Nao se pode saltar ondas: so se alcanca a onda N depois de passar pela N-1.
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Progresso inconsistente: complete primeiro a onda #${maxWave + 1}.` });
+    }
+
+    if (lastClaim && new Date() - new Date(lastClaim) < CLAIM_COOLDOWN_SECONDS * 1000) {
+      const waitMs = CLAIM_COOLDOWN_SECONDS * 1000 - (new Date() - new Date(lastClaim));
+      await client.query('ROLLBACK');
+      return res.set('Retry-After', Math.ceil(waitMs / 1000)).status(429).json({
+        error: `Aguarda ${Math.ceil(waitMs / 1000)} s antes da próxima recompensa.`
+      });
+    }
+
+    // Recompensa cheia nas ondas novas; repeticoes pagam uma fraccao (farm limitado).
+    const isRecord = wave === maxWave + 1;
+    const rewardRyos = isRecord ? wave * 150 : Math.round(wave * 150 * FARM_RATIO);
+
+    const upd = await client.query(
+      'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE id_user = $2 RETURNING coins',
+      [rewardRyos, userId]
+    );
+    if (upd.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Jogador não encontrado.' });
+    }
+
+    await client.query(
+      'UPDATE infinite_progress SET max_wave = $1, last_claim_at = now() WHERE id_user = $2',
+      [Math.max(maxWave, wave), userId]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({ success: true, rewardRyos, isRecord, newCoins: upd.rows[0].coins });
   } catch (err) {
-    await client.query('ROLLBACK');
-    client.release();
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Erro ao atribuir recompensa do modo infinito:', err);
     res.status(500).json({ error: 'Erro ao atribuir recompensa do modo infinito.' });
+  } finally {
+    client.release();
   }
 });
 

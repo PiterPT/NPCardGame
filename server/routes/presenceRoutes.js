@@ -1,17 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
-});
-pool.on('error', (err) => console.error('Erro no pool de presenca (ligacao inativa):', err.message));
+const { pool, query: poolQuery } = require('../config/db');
+const { requireAuth, requireSelf } = require('../middleware/auth');
 
 // ==========================================
 // CONFIGURACAO
@@ -32,9 +22,10 @@ const ONLINE_SQL = `(last_seen IS NOT NULL AND last_seen > now() - ($2::int * in
 // ==========================================
 // SINAL DE VIDA ("renovar"): coloca o jogador online durante TTL_MINUTES
 // ==========================================
-router.post('/presence/heartbeat', async (req, res) => {
-  const userId = toInt(req.body && req.body.userId);
-  if (!userId) return res.status(400).json({ error: 'userId inválido.' });
+router.post('/presence/heartbeat', requireAuth, async (req, res) => {
+  // A presença é do utilizador autenticado: o "userId" do corpo é ignorado (antes,
+  // qualquer um podia manter outra conta "online").
+  const userId = req.user.id;
 
   try {
     // So escreve se passaram >= 30 s (ou se estava marcado offline): evita uma escrita por cada sinal.
@@ -63,8 +54,10 @@ router.post('/presence/heartbeat', async (req, res) => {
 
 // ==========================================
 // CONSULTA: GET /api/presence?ids=1,2,3  ->  [{ id_user, online, last_seen }]
+// Autenticada (evita sondar a vila sem sessão), mas qualquer jogador autenticado
+// pode consultar o online de outros IDs — é informação pública do jogo.
 // ==========================================
-router.get('/presence', async (req, res) => {
+router.get('/presence', requireAuth, async (req, res) => {
   const raw = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
   const ids = raw.map(toInt);
   if (ids.length === 0 || ids.some((id) => id === null)) {
