@@ -15,6 +15,33 @@ const verifyAdmin = [requireAuth, requireAdmin];
 router.use('/admin', verifyAdmin);
 
 // ==========================================
+// FUNÇÃO AUXILIAR: processar image_url para B2
+// ==========================================
+
+// Processa o campo image_url vindo do corpo do pedido.
+// Se for base64 data URL, faz upload para B2 e retorna URL pública.
+// Se já for uma URL externa (https?://), mantém como está.
+async function processImageUrl(imageUrl) {
+  if (!imageUrl) return null;
+  // Se já for URL externa, manter
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  // Se for base64 image, fazer upload para B2
+  if (b2Upload.isBase64Image(imageUrl)) {
+    try {
+      const buffer = Buffer.from(imageUrl.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, ''), 'base64');
+      const imageUrlB2 = await b2Upload.uploadImageBuffer(buffer, 'card-' + Date.now());
+      return imageUrlB2;
+    } catch (err) {
+      console.error('⚠️ Erro ao processar base64 para B2:', err.message);
+      // Em caso de erro, retornar o original (base64) como fallback
+      return imageUrl;
+    }
+  }
+  // Caso estranho, retornar como está
+  return imageUrl;
+}
+
+// ==========================================
 // GESTÃO DE UTILIZADORES
 // ==========================================
 
@@ -73,14 +100,12 @@ router.get('/admin/cards', async (req, res) => {
 router.post('/admin/cards', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   try {
-    // Log do tamanho do payload (para diagnóstico de "Payload demasiado grande")
-    const payloadSize = Buffer.byteLength(JSON.stringify(req.body));
-    console.log(`📤 POST /admin/cards — payload size: ${(payloadSize / 1024 / 1024).toFixed(2)} MB (image_url length: ${image_url ? image_url.length : 0})`);
-    
+    // Processar image_url: se for base64, upload para B2; se for URL externa, manter
+    const processedImageUrl = await processImageUrl(image_url);
     const result = await pool.query(
       `INSERT INTO cardmodel (name, vida, tai, nin, image_url, classe) 
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [name, vida, tai, nin, image_url, classe || 'E']
+      [name, vida, tai, nin, processedImageUrl, classe || 'E']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -94,15 +119,13 @@ router.put('/admin/cards/:id', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   const { id } = req.params;
   try {
-    // Log do tamanho do payload (para diagnóstico de "Payload demasiado grande")
-    const payloadSize = Buffer.byteLength(JSON.stringify(req.body));
-    console.log(`📤 PUT /admin/cards/${id} — payload size: ${(payloadSize / 1024 / 1024).toFixed(2)} MB (image_url length: ${image_url ? image_url.length : 0})`);
-    
+    // Processar image_url: se for base64, upload para B2; se for URL externa, manter
+    const processedImageUrl = await processImageUrl(image_url);
     await pool.query(
       `UPDATE cardmodel 
        SET name = $1, vida = $2, tai = $3, nin = $4, image_url = $5, classe = $6 
        WHERE id_modelcard = $7`,
-      [name, vida, tai, nin, image_url, classe || 'E', id]
+      [name, vida, tai, nin, processedImageUrl, classe || 'E', id]
     );
     res.json({ message: 'Modelo de carta atualizado com sucesso!' });
   } catch (err) {
