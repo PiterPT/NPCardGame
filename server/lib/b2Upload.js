@@ -113,25 +113,50 @@ async function uploadImageBufferDirect(buffer, originalName) {
 
     const authData = await authResponse.json();
     
-    // A B2 API retorna os campos no root level (não em data)
-    // Verificar campos obrigatórios
+    // Verificar campos obrigatórios (root level)
     if (!authData.apiUrl || !authData.downloadUrl || !authData.authorizationToken) {
       console.error('❌ Estrutura inesperada na resposta de auth B2:', JSON.stringify(authData, null, 2));
       throw new Error('Resposta de autenticação B2 inválida - estrutura inesperada');
     }
     
-    const uploadUrl = authData.apiUrl + '/b2api/v2/b2_upload_file';
+    const apiUrl = authData.apiUrl;
     const authToken = authData.authorizationToken;
     const downloadUrl = authData.downloadUrl;
 
-    // 2. Upload do ficheiro
+    // 2. Get upload URL for the bucket (b2_get_upload_url)
+    // Precisamos do bucketId - está em authData.allowed.bucketId
+    const bucketId = authData.allowed?.bucketId;
+    if (!bucketId) {
+      throw new Error('Bucket ID não encontrado na resposta de auth B2');
+    }
+
+    const uploadUrlResponse = await fetch(`${authData.apiUrl}/b2api/v2/b2_get_upload_url`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authData.authorizationToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ bucketId })
+    });
+
+    if (!uploadUrlResponse.ok) {
+      const errorText = await uploadUrlResponse.text();
+      throw new Error(`Falha ao obter upload URL: ${uploadUrlResponse.status} - ${errorText}`);
+    }
+
+    const uploadUrlData = await uploadUrlResponse.json();
+    const uploadUrl = uploadUrlData.uploadUrl;
+    const uploadAuthToken = uploadUrlData.authorizationToken;
+
+    // 3. Upload do ficheiro
     const key = generateKey(originalName);
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        'Authorization': authToken,
+        'Authorization': uploadAuthToken,
         'X-Bz-File-Name': key,
+        'Content-Type': 'b2/x-auto',
       },
       body: buffer
     });
@@ -143,7 +168,7 @@ async function uploadImageBufferDirect(buffer, originalName) {
 
     // 3. GET a URL pública
     const result = await uploadResponse.json();
-    const publicUrl = `${downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
+    const publicUrl = `${authData.downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
 
     console.log(`✅ Upload direto B2 — chave: ${key}, URL: ${publicUrl}`);
     return publicUrl;
