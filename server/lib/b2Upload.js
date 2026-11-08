@@ -107,10 +107,18 @@ async function uploadImageBufferDirect(buffer, originalName) {
     });
 
     if (!authResponse.ok) {
-      throw new Error('Falha ao obter token de autorização da B2');
+      const errorText = await authResponse.text();
+      throw new Error(`Falha ao obter token de autorização da B2: ${authResponse.status} - ${errorText}`);
     }
 
     const authData = await authResponse.json();
+    
+    // Verificar se a estrutura da resposta é a esperada
+    if (!authData.data || !authData.data.apiUrl || !authData.data.downloadUrl || !authData.data.authorizationId) {
+      console.error('❌ Estrutura inesperada na resposta de auth B2:', JSON.stringify(authData, null, 2));
+      throw new Error('Resposta de autenticação B2 inválida - estrutura inesperada');
+    }
+    
     const uploadUrl = authData.data.apiUrl + '/b2api/v2/b2_upload_file';
 
     // 2. Upload do ficheiro

@@ -428,7 +428,7 @@ router.get('/pvp/notifications/:id', requireAuth, requireSelf('id'), async (req,
        JOIN users ua ON b.attacker_id = ua.id_user
        WHERE n.id_user = $1
        ORDER BY n.id_notification ASC
-       LIMIT $1`,
+       LIMIT $2`,
       [userId, limit]
     );
     res.json(r.rows);
