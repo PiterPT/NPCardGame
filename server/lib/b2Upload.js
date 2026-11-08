@@ -138,7 +138,8 @@ async function attemptUpload(buffer, key, mime) {
     method: 'POST',
     headers: {
       Authorization: uploadAuthToken,
-      'X-Bz-File-Name': encodeURIComponent(key),
+      // Codifica cada segmento mas mantém as '/' (a B2 espera barras literais)
+      'X-Bz-File-Name': key.split('/').map(encodeURIComponent).join('/'),
       'Content-Type': mime || 'b2/x-auto',
       'X-Bz-Content-Sha1': sha1,
     },
@@ -151,7 +152,7 @@ async function attemptUpload(buffer, key, mime) {
   }
   await uploadResponse.json();
 
-  return `${auth.downloadUrl}/file/${cfg().bucketName}/${key}`;
+  return `${auth.downloadUrl}/file/${cfg().bucketName}/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 /**
@@ -189,8 +190,16 @@ async function uploadImageBuffer(buffer, originalName, mime) {
 // Mantido por compatibilidade com código que importava o nome antigo
 const uploadImageBufferDirect = uploadImageBuffer;
 
+// Prefixo obrigatório das chaves de ficheiro. A Application Key está restrita a "cards/"
+// (namePrefix), por isso todos os ficheiros têm de começar por aqui.
+// Pode ser alterado com B2_FILE_PREFIX no .env (use '' se a chave não tiver prefixo).
+function filePrefix() {
+  const p = process.env.B2_FILE_PREFIX !== undefined ? process.env.B2_FILE_PREFIX : 'cards/';
+  return p && !p.endsWith('/') ? p + '/' : p;
+}
+
 /**
- * Gera uma chave única: ${timestamp}-${random}-${nome}${ext}
+ * Gera uma chave única: ${prefixo}${timestamp}-${random}-${nome}${ext}
  */
 function generateKey(originalName) {
   const timestamp = Date.now().toString(36);
@@ -198,7 +207,7 @@ function generateKey(originalName) {
   const nameWithoutExt = originalName ? originalName.replace(/\.[^/.]+$/, '') : 'card-image';
   const extMatch = originalName ? originalName.match(/\.[^/.]+$/) : null;
   const ext = extMatch ? extMatch[0] : '';
-  return `${timestamp}-${random}-${nameWithoutExt}${ext}`;
+  return `${filePrefix()}${timestamp}-${random}-${nameWithoutExt}${ext}`;
 }
 
 module.exports = {
