@@ -73,6 +73,10 @@ router.get('/admin/cards', async (req, res) => {
 router.post('/admin/cards', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   try {
+    // Log do tamanho do payload (para diagnóstico de "Payload demasiado grande")
+    const payloadSize = Buffer.byteLength(JSON.stringify(req.body));
+    console.log(`📤 POST /admin/cards — payload size: ${(payloadSize / 1024 / 1024).toFixed(2)} MB (image_url length: ${image_url ? image_url.length : 0})`);
+    
     const result = await pool.query(
       `INSERT INTO cardmodel (name, vida, tai, nin, image_url, classe) 
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -80,7 +84,7 @@ router.post('/admin/cards', async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Erro ao adicionar carta modelo:', err);
+    console.error('Erro ao adicionar carta modelo:', err.message, err.type);
     res.status(500).json({ error: 'Erro ao inserir novo modelo de carta.' });
   }
 });
@@ -90,6 +94,10 @@ router.put('/admin/cards/:id', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   const { id } = req.params;
   try {
+    // Log do tamanho do payload (para diagnóstico de "Payload demasiado grande")
+    const payloadSize = Buffer.byteLength(JSON.stringify(req.body));
+    console.log(`📤 PUT /admin/cards/${id} — payload size: ${(payloadSize / 1024 / 1024).toFixed(2)} MB (image_url length: ${image_url ? image_url.length : 0})`);
+    
     await pool.query(
       `UPDATE cardmodel 
        SET name = $1, vida = $2, tai = $3, nin = $4, image_url = $5, classe = $6 
@@ -98,7 +106,7 @@ router.put('/admin/cards/:id', async (req, res) => {
     );
     res.json({ message: 'Modelo de carta atualizado com sucesso!' });
   } catch (err) {
-    console.error('Erro ao atualizar carta modelo:', err);
+    console.error('Erro ao atualizar carta modelo:', err.message, err.type);
     res.status(500).json({ error: 'Erro ao guardar alterações da carta.' });
   }
 });

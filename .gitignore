@@ -35,3 +35,4 @@ opencode.json
 
 .env.example
 
+supabase/*
