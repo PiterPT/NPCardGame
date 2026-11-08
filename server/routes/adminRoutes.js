@@ -24,6 +24,7 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 // Processa o campo image_url vindo do corpo do pedido.
 // Se for base64 data URL, faz upload para B2 e retorna URL pública.
 // Se já for uma URL externa (https?://), mantém como está.
+// Se falhar upload, retorna null (não guarda base64).
 async function processImageUrl(imageUrl) {
   if (!imageUrl) return null;
   // Se já for URL externa, manter
@@ -40,12 +41,12 @@ async function processImageUrl(imageUrl) {
       return imageUrlB2;
     } catch (err) {
       console.error('⚠️ Erro ao processar base64 para B2:', err.message);
-      // Em caso de erro, retornar o original (base64) como fallback
-      return imageUrl;
+      // Em caso de erro, retorna null (não guarda base64 na BD)
+      return null;
     }
   }
-  // Caso estranho, retornar como está
-  return imageUrl;
+  // Caso estranho, retornar null
+  return null;
 }
 
 // ==========================================

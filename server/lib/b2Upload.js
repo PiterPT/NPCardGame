@@ -113,13 +113,16 @@ async function uploadImageBufferDirect(buffer, originalName) {
 
     const authData = await authResponse.json();
     
-    // Verificar se a estrutura da resposta é a esperada
-    if (!authData.data || !authData.data.apiUrl || !authData.data.downloadUrl || !authData.data.authorizationId) {
+    // A B2 API retorna os campos no root level (não em data)
+    // Verificar campos obrigatórios
+    if (!authData.apiUrl || !authData.downloadUrl || !authData.authorizationToken) {
       console.error('❌ Estrutura inesperada na resposta de auth B2:', JSON.stringify(authData, null, 2));
       throw new Error('Resposta de autenticação B2 inválida - estrutura inesperada');
     }
     
-    const uploadUrl = authData.data.apiUrl + '/b2api/v2/b2_upload_file';
+    const uploadUrl = authData.apiUrl + '/b2api/v2/b2_upload_file';
+    const authToken = authData.authorizationToken;
+    const downloadUrl = authData.downloadUrl;
 
     // 2. Upload do ficheiro
     const key = generateKey(originalName);
@@ -127,7 +130,7 @@ async function uploadImageBufferDirect(buffer, originalName) {
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        'Authorization': authData.data.authorizationId,
+        'Authorization': authToken,
         'X-Bz-File-Name': key,
       },
       body: buffer
@@ -140,7 +143,7 @@ async function uploadImageBufferDirect(buffer, originalName) {
 
     // 3. GET a URL pública
     const result = await uploadResponse.json();
-    const publicUrl = `${authData.data.downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
+    const publicUrl = `${downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
 
     console.log(`✅ Upload direto B2 — chave: ${key}, URL: ${publicUrl}`);
     return publicUrl;
