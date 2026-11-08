@@ -13,7 +13,7 @@ const { rollStatRank, computeCardRank, computeStatValue } = require('../config/s
 
 const router = express.Router();
 
-// As imagens estao na BD em base64 (varios MB cada): nao se carregam para a memoria nem vao no JSON.
+// As imagens das cartas são servidas via endpoint /api/pvp/card-image/:id (B2/backblaze).
 // O JSON leva o URL da rota de imagens (com cache do navegador). PUBLIC_API_URL e opcional.
 const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || 'https://npcardgame.onrender.com').replace(/\/$/, '');
 const cardImageUrl = (idModel) => (idModel ? `${PUBLIC_API_URL}/api/pvp/card-image/${idModel}` : null);

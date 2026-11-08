@@ -1,7 +1,7 @@
 /**
- * Script de migração: Converter imagens base64 na BD para Supabase Storage
+ * Script de migração: Converter imagens base64 na BD para Backblaze B2
  * 
- * Este script deve ser executado uma vez após a configuração do Supabase Storage.
+ * Este script deve ser executado uma vez após a configuração do Backblaze B2.
  * 
  * Usage: node server/scripts/migrateImagesToB2.js
  * 
@@ -9,17 +9,17 @@
    1. Lê todas as cartas da tabela cardmodel
    2. Para cada image_url que for base64 data URL:
       - Decodifica o base64
-      - Faz upload para Supabase Storage usando Service Role Key
+      - Faz upload para Backblaze B2
       - Atualiza o registo na BD com a nova URL pública
    3. URLs externas (https?://) são mantidas inalteradas
    4. image_url nulos/empty são mantidos como estão
 */
 
 const { query } = require('../config/db');
-const supabaseStorage = require('../lib/supabaseStorage');
+const b2Upload = require('../lib/b2Upload');
 
-async function migrateImagesToSupabase() {
-  console.log('🔄 Iniciando migração de imagens para Supabase Storage...\n');
+async function migrateImagesToB2() {
+  console.log('🔄 Iniciando migração de imagens para Backblaze B2...\n');
 
   try {
     // 1. Buscar todas as cartas
@@ -52,21 +52,25 @@ async function migrateImagesToSupabase() {
           const base64Data = image_url.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, '');
           const buffer = Buffer.from(base64Data, 'base64');
 
-          // Fazer upload para Supabase Storage
-          const result = await supabaseStorage.migrateBase64ToSupabase(image_url, id_modelcard);
-
-          if (result.success && result.storageUrl) {
-            // Atualizar BD com a nova URL
-            await query(
-              'UPDATE cardmodel SET image_url = $1 WHERE id_modelcard = $2',
-              [result.storageUrl, id_modelcard]
-            );
-            console.log(`   ✅ Carta #${id_modelcard} → ${result.storageUrl}`);
-            migrated++;
-          } else {
-            console.log(`   ⚠️  Carta #${id_modelcard}: ${result.message}`);
+          // Validar tamanho (máx 2MB)
+          const maxSize = 2 * 1024 * 1024;
+          if (buffer.length > maxSize) {
+            console.log(`   ⚠️  Carta #${id_modelcard}: imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB > 2MB), a ignorar.`);
             errors++;
+            continue;
           }
+
+          // Fazer upload para Backblaze B2
+          const b2Url = await b2Upload.uploadImageBuffer(buffer, `card-${id_modelcard}-${Date.now()}`);
+
+          // Atualizar BD com a nova URL
+          await query(
+            'UPDATE cardmodel SET image_url = $1 WHERE id_modelcard = $2',
+            [b2Url, id_modelcard]
+          );
+
+          console.log(`   ✅ Carta #${id_modelcard} → ${b2Url}`);
+          migrated++;
         } catch (err) {
           console.error(`   ❌ Erro ao migrar carta #${id_modelcard}:`, err.message);
           errors++;
@@ -80,7 +84,7 @@ async function migrateImagesToSupabase() {
 
     console.log('\n📈 Resumo da migração:');
     console.log(`   • Migradas: ${migrated}`);
-    console.log(`   • Mantidas (URL externa): ${skipped - migrated}`);
+    console.log(`   • Mantidas (URL externa): ${skipped}`);
     console.log(`   • Com erro: ${errors}`);
     console.log(`   • Total processadas: ${cards.length}`);
 
@@ -96,7 +100,7 @@ async function migrateImagesToSupabase() {
 
 // Executar se este arquivo for chamado diretamente
 if (require.main === module) {
-  migrateImagesToSupabase().then(() => process.exit(0)).catch(() => process.exit(1));
+  migrateImagesToB2().then(() => process.exit(0)).catch(() => process.exit(1));
 }
 
-module.exports = { migrateImagesToSupabase };
+module.exports = { migrateImagesToB2 };

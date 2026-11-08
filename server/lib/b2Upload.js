@@ -10,7 +10,7 @@
  */
 
 // Validar variáveis de ambiente necessárias ANTES de tentar carregar o pacote
-const REQUIRED_VARS = ['B2_ACCOUNT_ID', 'B2_APPLICATION_KEY', 'B2_BUCKET_NAME'];
+const REQUIRED_VARS = ['B2_KEY_ID', 'B2_APPLICATION_KEY', 'B2_BUCKET_NAME'];
 const missingVars = REQUIRED_VARS.filter(v => !process.env[v]);
 if (missingVars.length > 0) {
   console.error(`⚠️ Variáveis de ambiente B2 não configuradas: ${missingVars.join(', ')}.`);
@@ -18,7 +18,7 @@ if (missingVars.length > 0) {
 }
 
 // Variáveis de ambiente
-const B2_ACCOUNT_ID = process.env.B2_ACCOUNT_ID;
+const B2_KEY_ID = process.env.B2_KEY_ID;
 const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY;
 const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME;
 
@@ -27,7 +27,7 @@ let b2 = null;
 try {
   const BackblazeB2 = require('backblaze-b2');
   b2 = new BackblazeB2({
-    accountId: B2_ACCOUNT_ID,
+    accountId: B2_KEY_ID,
     applicationKey: B2_APPLICATION_KEY,
   });
   console.log('✅ Biblioteca b2-node carregada com sucesso');
@@ -93,7 +93,7 @@ async function uploadImageBufferLibrary(buffer, originalName) {
  * @returns {Promise<string>} URL pública do ficheiro uploadado
  */
 async function uploadImageBufferDirect(buffer, originalName) {
-  if (!B2_ACCOUNT_ID || !B2_APPLICATION_KEY || !B2_BUCKET_NAME) {
+  if (!B2_KEY_ID || !B2_APPLICATION_KEY || !B2_BUCKET_NAME) {
     throw new Error('Credenciais B2 incompletas para upload direto');
   }
 
@@ -102,7 +102,7 @@ async function uploadImageBufferDirect(buffer, originalName) {
     const authResponse = await fetch('https://api.backblaze.com/b2api/v2/b2_authorize_account', {
       method: 'GET',
       headers: {
-        'Authorization': 'Basic ' + Buffer.from(`${B2_ACCOUNT_ID}:${B2_APPLICATION_KEY}`).toString('base64')
+        'Authorization': 'Basic ' + Buffer.from(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`).toString('base64')
       }
     });
 
@@ -132,7 +132,7 @@ async function uploadImageBufferDirect(buffer, originalName) {
 
     // 3. GET a URL pública
     const result = await uploadResponse.json();
-    const publicUrl = `${authData.data.downloadUrl}/${B2_BUCKET_NAME}/${key}`;
+    const publicUrl = `${authData.data.downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
 
     console.log(`✅ Upload direto B2 — chave: ${key}, URL: ${publicUrl}`);
     return publicUrl;

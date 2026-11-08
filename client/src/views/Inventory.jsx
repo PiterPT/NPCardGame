@@ -3,7 +3,7 @@ import Loader from '../components/Loader';
 import { API_URL, authFetch } from '../lib/api';
 import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 
-export default function Inventory({ user, setUser }) {
+export default function Inventory({ user, setUser, openCard }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('view'); // 'view', 'sell', 'feed'
@@ -376,9 +376,15 @@ export default function Inventory({ user, setUser }) {
               <div
                 key={card.id_card}
                 onClick={() => {
-                  if (mode === 'feed' && !targetCardForFeed && !card.is_locked) {
-                    setTargetCardForFeed(card);
+                  // Modo 'feed': seleciona a carta alvo para alimentação (comportamento original).
+                  if (mode === 'feed') {
+                    if (!targetCardForFeed && !card.is_locked) {
+                      setTargetCardForFeed(card);
+                    }
+                    return;
                   }
+                  // Modo 'view': clicar na carta abre o detalhe (/cartas/:id).
+                  if (mode === 'view') openCard(card.id_card);
                 }}
                 style={{
                   background: isTarget ? '#1e3a8a' : isChecked ? '#2e1065' : '#1e1e2e',

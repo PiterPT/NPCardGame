@@ -18,6 +18,9 @@ router.use('/admin', verifyAdmin);
 // FUNÇÃO AUXILIAR: processar image_url para B2
 // ==========================================
 
+// Limite máximo de imagem (2MB) — igual ao frontend
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
 // Processa o campo image_url vindo do corpo do pedido.
 // Se for base64 data URL, faz upload para B2 e retorna URL pública.
 // Se já for uma URL externa (https?://), mantém como está.
@@ -29,6 +32,10 @@ async function processImageUrl(imageUrl) {
   if (b2Upload.isBase64Image(imageUrl)) {
     try {
       const buffer = Buffer.from(imageUrl.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, ''), 'base64');
+      // Validação server-side do tamanho
+      if (buffer.length > MAX_IMAGE_BYTES) {
+        throw new Error(`Imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB). Máximo: 2 MB.`);
+      }
       const imageUrlB2 = await b2Upload.uploadImageBuffer(buffer, 'card-' + Date.now());
       return imageUrlB2;
     } catch (err) {
@@ -164,6 +171,10 @@ router.post('/admin/card-image-upload', async (req, res) => {
     // Extrair o buffer removendo o prefixo data:
     const base64Data = image_base64.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
+    // Validação server-side do tamanho
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      return res.status(400).json({ error: `Imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB). Máximo: 2 MB.` });
+    }
     const imageUrl = await b2Upload.uploadImageBuffer(buffer, 'card-upload-' + Date.now());
     res.json({ image_url: imageUrl });
   } catch (err) {

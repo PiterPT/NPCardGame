@@ -1,0 +1,424 @@
+/* ============================================================
+   CardDetail — página de detalhe de carta (estilo pergaminho)
+   ============================================================ */
+
+.card-detail {
+  padding: 20px;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-sizing: border-box;
+  color: #fff;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* --- Navegação --- */
+.card-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-btn-ghost {
+  background: transparent;
+  border: 1px solid #55557a;
+  color: #ccc;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.card-btn-ghost:hover {
+  border-color: #ff9900;
+  color: #ff9900;
+}
+
+.card-arrows {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-arrow-btn {
+  width: 38px;
+  height: 38px;
+  background: #1e1e2e;
+  border: 1px solid #444;
+  color: #ff9900;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.card-arrow-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.card-arrow-label {
+  color: #888;
+  font-size: 13px;
+}
+
+/* --- Header (carta) --- */
+.card-header {
+  background: linear-gradient(155deg, #f2e5c9 0%, #ddc69c 55%, #d3b784 100%);
+  border: 2px solid #8a6a35;
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25), 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.card-tavern {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #7a5a2a;
+}
+
+.card-title {
+  font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  font-size: 28px;
+  color: #4a2f14;
+  margin: 8px 0 4px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.card-desc {
+  font-size: 13px;
+  font-style: italic;
+  color: #6b4e26;
+  margin: 0;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-badges {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-level-badge {
+  background: #8a6a35;
+  color: #fff8e7;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.card-classe-badge {
+  border: 1px solid #8a6a35;
+  color: #6b4e26;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* --- Zona central: arte --- */
+.card-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-art-frame {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 3 / 4;
+  border: 3px solid #8a6a35;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #241505;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
+}
+
+.card-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card-art--evolved {
+  position: absolute;
+  inset: -4%;
+  width: 108%;
+  height: 108%;
+  object-fit: cover;
+  opacity: 0.35;
+  transform: scale(1.04);
+  pointer-events: none;
+}
+
+.card-change-hero {
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid #c9a227;
+  color: #f3d9a4;
+  padding: 8px 22px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.card-change-hero:hover {
+  background: rgba(255, 153, 0, 0.15);
+}
+
+/* --- Arte sem imagem (placeholder) --- */
+.card-art-missing {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 30%, #3a2410, #1a0f05);
+  color: #8a6a35;
+  font-size: 48px;
+}
+
+/* --- Aviso de evolução --- */
+.card-notice {
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid #8a6a35;
+  border-left: 4px solid #c9a227;
+  color: #f3d9a4;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* --- Atributos --- */
+.card-stats {
+  background: #191926;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card-stats-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #ff9900;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.card-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.card-stats-table th,
+.card-stats-table td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.card-stats-table th {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #333;
+}
+
+.card-stats-table td:first-child {
+  text-align: left;
+  color: #ddd;
+  font-weight: bold;
+}
+
+.card-stats-table td.num {
+  color: #fff;
+}
+
+.card-stats-table td.current {
+  color: #999;
+}
+
+.card-stats-table td.next {
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.card-stats-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- Itens --- */
+.card-items {
+  background: #191926;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card-items-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #ff9900;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.card-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.card-slot {
+  background: #121212;
+  border: 1px dashed #444;
+  border-radius: 8px;
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.card-slot-icon {
+  font-size: 22px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.card-slot-name {
+  font-size: 11px;
+  color: #aaa;
+}
+
+/* --- Accão --- */
+.card-action {
+  width: 100%;
+  background: linear-gradient(180deg, #ffbb33, #ff9900);
+  color: #1a1206;
+  border: none;
+  border-radius: 12px;
+  padding: 16px;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(255, 153, 0, 0.35);
+}
+
+.card-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-action-cost {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: normal;
+  opacity: 0.8;
+}
+
+/* --- Estado: carta não encontrada (404 amigável) --- */
+.card-not-found {
+  background: #191926;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.card-not-found-icon {
+  font-size: 52px;
+}
+
+.card-not-found-title {
+  margin: 0;
+  font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  font-size: 24px;
+  color: #ff9900;
+}
+
+.card-not-found-desc {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: #aaa;
+}
+
+/* --- Acessibilidade: foco visível --- */
+.card-btn-ghost:focus-visible,
+.card-arrow-btn:focus-visible,
+.card-change-hero:focus-visible,
+.card-action:focus-visible {
+  outline: 2px solid #ff9900;
+  outline-offset: 2px;
+}
+
+/* --- Responsivo: Tablets e Telemóis --- */
+@media (max-width: 768px) {
+  .card-detail {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .card-title {
+    font-size: 24px;
+  }
+
+  .card-art-frame {
+    max-width: 280px;
+  }
+
+  .card-stats,
+  .card-items {
+    padding: 12px;
+  }
+
+  .card-stats-table {
+    font-size: 13px;
+  }
+
+  .card-action {
+    padding: 14px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-title {
+    font-size: 21px;
+  }
+
+  .card-desc {
+    font-size: 12px;
+  }
+
+  .card-stats-table th,
+  .card-stats-table td {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+}

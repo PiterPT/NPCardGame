@@ -21,19 +21,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://npcardgame.onrender.co
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 /**
- * Gera um caminho único para o armazenamento do Supabase
- * @param {string} originalName - Nome original do ficheiro
- * @returns {string} Caminho único (timestamp-random-nome)
- */
-function generateKey(originalName) {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).slice(2, 8);
-  const nameWithoutExt = originalName ? originalName.replace(/\.[^/.]+$/, '') : 'card-image';
-  const ext = originalName ? originalName.match(/\.[^/.]+$/) || '' : '';
-  return `${timestamp}-${random}-${nameWithoutExt}${ext}`;
-}
-
-/**
  * Faz upload de um buffer para o Supabase Storage
  * Usa a API REST do Supabase com Service Role Key para autenticação
  * Usa fetch nativo do Node.js 22 (não precisa de node-fetch)

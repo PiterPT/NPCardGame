@@ -59,11 +59,11 @@ const verifyLimiter = rateLimit({
 
 app.use('/api', verifyLimiter);
 
-// 10MB apenas para o CRUD de modelos de cartas no painel admin, onde a imagem vem
-// em base64 dentro do corpo. As outras rotas continuem limitadas a 100KB.
+// 10MB para rotas admin que recebem imagens em base64 (cards + card-image-upload).
 // IMPORTANTE: o parser com limite maior DEVE vir ANTES do parser default,
 // senão o default (100kb) intercepta primeiro e devolve "Payload demasiado grande".
 app.use('/api/admin/cards', express.json({ limit: '10mb' }));
+app.use('/api/admin/card-image-upload', express.json({ limit: '10mb' }));
 
 // Janela de JSON por defeito a 100KB: é suficiente para os pedidos de jogo.
 const jsonDefault = express.json({ limit: '100kb' });

@@ -5,6 +5,7 @@ import Inventory from './views/Inventory';
 import PvpArena from './views/PvpArena';
 import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
+import CardDetail from './views/CardDetail';
 import { API_URL, authFetch, clearSession } from './lib/api';
 import './styles/global.css';
 
@@ -15,6 +16,7 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState('dashboard');
+  const [cardId, setCardId] = useState(null);
 
   const handleUpdateUser = (updatedData) => {
     setUser(prev => {
@@ -68,6 +70,16 @@ export default function App() {
 
   const handleNavClick = (view) => {
     setCurrentView(view);
+  };
+
+  // Detalhe de carta: /cartas/:id (estrutura atual usa estado em vez de router).
+  const openCard = (id) => {
+    setCardId(id);
+    setCurrentView('card');
+  };
+
+  const goBackToInventory = () => {
+    setCurrentView('inventory');
   };
 
   if (!user) {
@@ -146,8 +158,18 @@ export default function App() {
 
         <div className="app-content-view">
           {currentView === 'dashboard' && <Dashboard user={user} setCurrentView={setCurrentView} />}
-          {currentView === 'inventory' && <Inventory user={user} setUser={handleUpdateUser} />}
+          {currentView === 'inventory' && <Inventory user={user} setUser={handleUpdateUser} openCard={openCard} />}
           {currentView === 'gacha' && <Gacha user={user} setUser={handleUpdateUser} />}
+          {currentView === 'card' && (
+            <CardDetail
+              key={cardId}
+              cardId={cardId}
+              userId={user ? (user.id_user || user.id) : null}
+              onBack={goBackToInventory}
+              onPrev={(id) => { if (id != null) setCardId(id); }}
+              onNext={(id) => { if (id != null) setCardId(id); }}
+            />
+          )}
           {currentView === 'pvp' && <PvpArena user={user} setUser={handleUpdateUser} />}
           {currentView === 'admin' && user.role === 'admin' && <AdminPanel />}
         </div>

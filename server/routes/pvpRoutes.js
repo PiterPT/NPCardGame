@@ -31,7 +31,7 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-// R1-C4: valores efetivos da instância + ranks por stat/geral (retrocompatível; defaults D+/1.0).
+// R1-C4: valores efetivos da instancia + ranks por stat/geral (retrocompativel; defaults D+/1.0).
 const statRanksOf = (c, vida, tai, nin) => ({
   vida: { pos: c.vida_rank_pos ?? 6, code: c.vida_rank_code ?? 'D+', mult: Number(c.vida_rank_mult ?? 1.0), value: vida },
   tai: { pos: c.tai_rank_pos ?? 6, code: c.tai_rank_code ?? 'D+', mult: Number(c.tai_rank_mult ?? 1.0), value: tai },
@@ -49,7 +49,7 @@ const cardView = (c) => {
     vida,
     tai,
     nin,
-    // Caminho curto para a rota de imagens (as imagens estao na BD como base64 de varios MB: nunca vao no JSON).
+    // Caminho curto para a rota de imagens (B2/backblaze via /api/pvp/card-image/:id).
     image_url: c.id_cardmodel ? `/api/pvp/card-image/${c.id_cardmodel}` : null,
     classe: c.classe ?? null,
     statRanks: statRanksOf(c, vida, tai, nin)
@@ -78,7 +78,7 @@ async function ensureRanking(client, userId) {
       [userId, INITIAL_POINTS]
     );
   }
-  return { rank: r.rows[0].rank, points: r.rows[0].points, name: user.rows[0].name };
+  return { rank: r.rows[0].rank, points: r.rows[0].points, name: r.rows[0].name };
 }
 
 async function getDeck(db, userId) {
@@ -168,8 +168,8 @@ const formatBattle = (r) => ({
 const BATTLE_SELECT = `
   SELECT b.*, ua.name AS attacker_name, ud.name AS defender_name
   FROM pvp_battles b
-  JOIN users ua ON ua.id_user = b.attacker_id
-  JOIN users ud ON ud.id_user = b.defender_id`;
+  JOIN users ua ON b.attacker_id = ua.id_user
+  JOIN users ud ON b.defender_id = ud.id_user`;
 
 // ==========================================
 // 1. DECK DE BATALHA (tabela pvp_defense ja existente)
@@ -184,14 +184,14 @@ router.post('/pvp/defense', requireAuth, async (req, res) => {
   if (!Array.isArray(cardIds)) {
     return res.status(400).json({ error: 'Dados inválidos (userId ou cardIds ausentes).' });
   }
-  const ids = cardIds.map(toInt);
-  if (ids.some((id) => id === null)) {
+
+  if (cardIds.map(toInt).some((id) => id === null)) {
     return res.status(400).json({ error: 'IDs de cartas inválidos.' });
   }
-  if (new Set(ids).size !== ids.length) {
+  if (new Set(cardIds).size !== cardIds.length) {
     return res.status(400).json({ error: 'O deck não pode ter cartas repetidas.' });
   }
-  if (ids.length > MAX_DECK) {
+  if (cardIds.length > MAX_DECK) {
     return res.status(400).json({ error: `O deck pode ter no máximo ${MAX_DECK} cartas.` });
   }
 
@@ -200,23 +200,24 @@ router.post('/pvp/defense', requireAuth, async (req, res) => {
     await client.query('BEGIN');
 
     // Apenas cartas do proprio jogador.
-    if (ids.length > 0) {
+    if (cardIds.length > 0) {
       const owned = await client.query(
         `SELECT COUNT(*)::int AS n FROM cards WHERE id_card = ANY($1::int[]) AND ${CARD_OWNER_COLUMN} = $2`,
-        [ids, userId]
+        [cardIds, userId]
       );
-      if (owned.rows[0].n !== ids.length) {
+      if (owned.rows[0].n !== cardIds.length) {
         throw new HttpError(403, 'Só podes usar cartas que te pertencem.');
       }
     }
 
     await client.query('DELETE FROM pvp_defense WHERE id_user = $1', [userId]);
-    for (const cardId of ids) {
+    for (const cardId of cardIds) {
       await client.query('INSERT INTO pvp_defense (id_user, id_card) VALUES ($1, $2)', [userId, cardId]);
     }
 
     await client.query('COMMIT');
-    return res.json({ success: true, message: 'Deck guardado com sucesso!' });
+
+    res.json({ success: true, message: 'Deck guardado com sucesso!' });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     return sendError(res, err, 'Erro interno ao guardar o deck.');
@@ -235,8 +236,6 @@ router.get('/pvp/user/:id', requireAuth, requireSelf('id'), async (req, res) => 
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock($1)', [RANK_LOCK_KEY]);
     const me = await ensureRanking(client, userId);
-    await client.query('COMMIT');
-
     const defenseCards = (await getDeck(client, userId)).map(cardView);
     const stats = await getStats(client, userId);
     res.json({ rank: me.rank, points: me.points, defenseCards, stats });
@@ -258,13 +257,12 @@ router.get('/pvp/ranking', requireAuth, async (req, res) => {
   const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
   try {
     const result = await pool.query(
-      `SELECT r.rank, r.points, u.id_user, u.name,
+      `SELECT r.rank, r.points, u.id_user, u.name, u.email, u.coins, u.role,
               (SELECT COUNT(*)::int FROM pvp_battles b WHERE b.winner_id = u.id_user) AS wins,
               (SELECT COUNT(*)::int FROM pvp_battles b
-                WHERE (b.attacker_id = u.id_user OR b.defender_id = u.id_user)
-                  AND b.winner_id <> u.id_user) AS losses
+                WHERE b.attacker_id = u.id_user OR b.defender_id = u.id_user) AS losses
        FROM pvp_ranking r
-       JOIN users u ON u.id_user = r.id_user
+       JOIN users u ON r.id_user = u.id_user
        ORDER BY r.rank ASC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -306,13 +304,14 @@ router.post('/pvp/battle', requireAuth, async (req, res) => {
 
     const above = await client.query(
       `SELECT r.id_user, r.rank, r.points, u.name
-       FROM pvp_ranking r JOIN users u ON u.id_user = r.id_user
+       FROM pvp_ranking r JOIN users u ON r.id_user = u.id_user
        WHERE r.rank = $1`,
       [att.rank - 1]
     );
     if (above.rows.length === 0) {
       throw new HttpError(409, 'Ranking inconsistente: não existe jogador na posição acima. Contacta um administrador.');
     }
+
     const def = above.rows[0];
     if (def.id_user !== defenderId) {
       throw new HttpError(409, `Só podes desafiar o jogador imediatamente acima de ti (#${att.rank - 1}).`);
@@ -338,9 +337,9 @@ router.post('/pvp/battle', requireAuth, async (req, res) => {
     const attackerWins = attackerPower >= defenderPower;
 
     const attDelta = attackerWins ? POINTS_WIN : -Math.min(POINTS_LOSS, att.points);
-    const defDelta = attackerWins ? -Math.min(POINTS_LOSS, def.points) : POINTS_WIN;
-    await client.query('UPDATE pvp_ranking SET points = points + $1 WHERE id_user = $2', [attDelta, attackerId]);
-    await client.query('UPDATE pvp_ranking SET points = points + $1 WHERE id_user = $2', [defDelta, defenderId]);
+    const defDelta = attackerWins ? POINTS_WIN : -Math.min(POINTS_LOSS, def.points);
+    await client.query('UPDATE pvp_ranking SET points + $1 WHERE id_user = $2', [attDelta, attackerId]);
+    await client.query('UPDATE pvp_ranking SET points + $1 WHERE id_user = $2', [defDelta, defenderId]);
 
     let attackerRankAfter = att.rank;
     let defenderRankAfter = def.rank;
@@ -349,8 +348,8 @@ router.post('/pvp/battle', requireAuth, async (req, res) => {
       attackerRankAfter = def.rank;
       defenderRankAfter = att.rank;
       await client.query('UPDATE pvp_ranking SET rank = -1 WHERE id_user = $1', [attackerId]);
-      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [att.rank, defenderId]);
-      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [def.rank, attackerId]);
+      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [attackerRankAfter, attackerId]);
+      await client.query('UPDATE pvp_ranking SET rank = $1 WHERE id_user = $2', [defenderRankAfter, defenderId]);
     }
 
     const ins = await client.query(
@@ -380,7 +379,7 @@ router.post('/pvp/battle', requireAuth, async (req, res) => {
       winner: attackerWins ? 'attacker' : 'defender',
       message: attackerWins
         ? `Vitória! Subiste para a posição #${attackerRankAfter}.`
-        : `Derrota. Manténs a posição #${att.rank}.`,
+        : `Derrota. Manténs a posição #${defenderRankAfter}.`,
       battle: formatBattle(full.rows[0])
     });
   } catch (err) {
@@ -403,7 +402,7 @@ router.get('/pvp/history/:id', requireAuth, requireSelf('id'), async (req, res) 
       `${BATTLE_SELECT}
        WHERE b.attacker_id = $1 OR b.defender_id = $1
        ORDER BY b.created_at DESC, b.id_battle DESC
-       LIMIT $2`,
+       LIMIT $1 OFFSET $2`,
       [userId, limit]
     );
     res.json(r.rows.map(formatBattle));
@@ -419,22 +418,20 @@ router.get('/pvp/history/:id', requireAuth, requireSelf('id'), async (req, res) 
 
 router.get('/pvp/notifications/:id', requireAuth, requireSelf('id'), async (req, res) => {
   const userId = req.user.id;
+  const limit = Math.min(toInt(req.query.limit) || 30, 100);
   try {
     const r = await pool.query(
-      `SELECT n.id_notification, n.is_read, n.created_at, n.id_battle,
-              ua.name AS attacker_name, (b.winner_id = b.attacker_id) AS attacker_won
+      `SELECT n.id_notification, n.is_read, n.id_battle,
+              ua.name AS attacker_name, (b.winner_id = $1) AS attacker_won
        FROM pvp_notifications n
-       JOIN pvp_battles b ON b.id_battle = n.id_battle
-       JOIN users ua ON ua.id_user = b.attacker_id
+       JOIN pvp_battles b ON n.id_battle = b.id_battle
+       JOIN users ua ON b.attacker_id = ua.id_user
        WHERE n.id_user = $1
-       ORDER BY n.created_at DESC, n.id_notification DESC
-       LIMIT 30`,
-      [userId]
+       ORDER BY n.id_notification ASC
+       LIMIT $1`,
+      [userId, limit]
     );
-    res.json({
-      unread: r.rows.filter((n) => !n.is_read).length,
-      notifications: r.rows
-    });
+    res.json(r.rows);
   } catch (err) {
     console.error('Erro ao buscar notificações:', err);
     res.status(500).json({ error: 'Erro ao carregar notificações.' });
@@ -443,12 +440,13 @@ router.get('/pvp/notifications/:id', requireAuth, requireSelf('id'), async (req,
 
 router.post('/pvp/notifications/:id/read', requireAuth, requireSelf('id'), async (req, res) => {
   const userId = req.user.id;
+  const id = req.params.id;
   try {
-    await pool.query('UPDATE pvp_notifications SET is_read = TRUE WHERE id_user = $1 AND is_read = FALSE', [userId]);
+    await pool.query('UPDATE pvp_notifications SET is_read = TRUE WHERE id_user = $1 AND id_battle = $2 AND is_read = FALSE', [userId, id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Erro ao marcar notificações:', err);
-    res.status(500).json({ error: 'Erro ao atualizar notificações.' });
+    res.status(500).json({ error: 'Erro ao marcar notificações.' });
   }
 });
 
@@ -456,7 +454,7 @@ router.post('/pvp/notifications/:id/read', requireAuth, requireSelf('id'), async
 // 5b. CARTAS DO JOGADOR (leve, sem imagens) E IMAGENS DAS CARTAS
 // ==========================================
 
-// Lista as cartas do inventario sem o campo de imagem (que pode ter varios MB em base64).
+// Lista as cartas do inventario sem o campo de imagem (URLs servidas via B2/backblaze).
 router.get('/pvp/cards/:id', requireAuth, requireSelf('id'), async (req, res) => {
   const userId = req.user.id;
   try {
@@ -494,7 +492,7 @@ router.get('/pvp/card-image/:id', async (req, res) => {
     if (/^https?:\/\//i.test(src)) {
       res.set({
         'Cache-Control': 'public, max-age=86400',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
+        'CrossOrigin-Resource-Policy': 'cross-origin'
       });
       return res.redirect(302, src);
     }
@@ -505,19 +503,9 @@ router.get('/pvp/card-image/:id', async (req, res) => {
       res.set({
         'Content-Type': m[1],
         'Cache-Control': 'public, max-age=86400',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
+        'CrossOrigin-Resource-Policy': 'cross-origin'
       });
       return res.send(Buffer.from(m[2], 'base64'));
-    }
-
-    // Se for URL do B2 (provavelmente https://... da B2), servir com headers de cache
-    // O browser pode buscar diretamente a URL da B2
-    if (/^https?:\/\//i.test(src)) {
-      res.set({
-        'Cache-Control': 'public, max-age=86400',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
-      });
-      return res.redirect(302, src);
     }
 
     // Fallback desconhecido
@@ -535,7 +523,7 @@ router.get('/pvp/card-image/:id', async (req, res) => {
 // Antes: o cliente mandava "wave" livre e recebia wave*150 Ryos, sem validacao de
 // progresso nem limite — o modo infinito era uma fonte inesgotavel de moedas.
 // Agora o progresso (maior onda alcancada) e guardado na BD e o pedido tem cooldown,
-// pelo que repeticoes nao acumulam moedas indefinidamente.
+// pelo qual repetições nao acumulam moedas indefinidamente.
 
 const MAX_WAVE = 10_000;            // cap absoluto por pedido
 const FARM_RATIO = 0.25;            // repeticao da onda paga 25% da recompensa do recorde
@@ -548,7 +536,9 @@ const infiniteProgressCache = new Map();
 
 function getInfiniteCache(userId) {
   const entry = infiniteProgressCache.get(userId);
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (Date.now() - entry.ts > INFINITE_CACHE_TTL_MS) {
     infiniteProgressCache.delete(userId);
     return null;
@@ -585,7 +575,7 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
       [userId]
     );
     const prog = await client.query(
-      'SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day FROM infinite_progress WHERE id_user = $1 FOR UPDATE',
+      'SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day, resets_day FROM infinite_progress WHERE id_user = $1 FOR UPDATE',
       [userId]
     );
     if (prog.rows.length === 0) throw new Error('progresso ausente');
@@ -593,8 +583,8 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
     const maxWave = prog.rows[0].max_wave || 0;
     const bestWave = prog.rows[0].best_wave || 0;
     const lastClaim = prog.rows[0].last_claim_at;
-    const resetsToday = prog.rows[0].resets_today || 0;
-    const resetsDay = prog.rows[0].resets_day || null;
+    const resetsToday = prog.rows[0].resets_today;
+    const resetsDay = prog.rows[0].resets_day;
 
     if (wave > maxWave + 1) {
       // Nao se pode saltar ondas: so se alcanca a onda N depois de passar pela N-1 (progressão da run).
@@ -604,15 +594,12 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
 
     if (lastClaim && new Date() - new Date(lastClaim) < CLAIM_COOLDOWN_SECONDS * 1000) {
       const waitMs = CLAIM_COOLDOWN_SECONDS * 1000 - (new Date() - new Date(lastClaim));
-      await client.query('ROLLBACK');
       return res.set('Retry-After', Math.ceil(waitMs / 1000)).status(429).json({
         error: `Aguarda ${Math.ceil(waitMs / 1000)} s antes da próxima recompensa.`
       });
     }
 
     // FM1 (Opção 1, A): recorde absoluto = wave > best_wave.
-    // Recorde: Ryos completos + diamantes max(1, floor(wave/10)).
-    // Repeat (inclui waves <= best_wave, mesmo após reset com max_wave a 0): Ryos 25%, 0 diamantes.
     const isRecordReward = wave > bestWave;
     const rewardRyos = isRecordReward ? wave * 150 : Math.round(wave * 150 * FARM_RATIO);
     const rewardDiamonds = isRecordReward ? Math.max(1, Math.floor(wave / 10)) : 0;
@@ -630,17 +617,20 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Jogador não encontrado.' });
     }
 
+    const newBestWaveFinal = newBestWave;
+    const newMaxWaveFinal = newMaxWave;
+
     await client.query(
       'UPDATE infinite_progress SET max_wave = $1, best_wave = $2, last_claim_at = now() WHERE id_user = $3',
-      [newMaxWave, newBestWave, userId]
+      [newMaxWaveFinal, newBestWaveFinal, userId]
     );
 
     await client.query('COMMIT');
 
     // Atualiza cache em memória após claim bem-sucedido (BD continua a ser a fonte de verdade).
     setInfiniteCache(userId, {
-      max_wave: newMaxWave,
-      best_wave: newBestWave,
+      max_wave: newMaxWaveFinal,
+      best_wave: newBestWaveFinal,
       last_claim_at: new Date().toISOString(),
       resets_today: resetsToday,
       resets_day: resetsDay
@@ -654,8 +644,9 @@ router.post('/infinite/reward', requireAuth, async (req, res) => {
       isRecord: isRecordReward,
       newCoins: upd.rows[0].coins,
       newDiamonds: upd.rows[0].diamonds,
-      maxWave: newMaxWave,
-      bestWave: newBestWave
+      maxWave: newMaxWaveFinal,
+      bestWave: newBestWaveFinal,
+      newMaxWave: newMaxWaveFinal
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -673,30 +664,29 @@ router.post('/infinite/reset', requireAuth, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Garante linha de progresso; FOR UPDATE serializa resets/claims concorrentes.
     await client.query(
       `INSERT INTO infinite_progress (id_user, max_wave) VALUES ($1, 0)
        ON CONFLICT (id_user) DO NOTHING`,
       [userId]
     );
     const prog = await client.query(
-      `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day,
-              CURRENT_DATE AS today,
-              CASE WHEN resets_day IS NULL OR resets_day <> CURRENT_DATE THEN 0 ELSE resets_today END AS effective_resets_today
-       FROM infinite_progress WHERE id_user = $1 FOR UPDATE`,
+      `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day, resets_day FROM infinite_progress WHERE id_user = $1 FOR UPDATE`,
       [userId]
     );
     if (prog.rows.length === 0) throw new Error('progresso ausente');
 
-    const row = prog.rows[0];
-    const effectiveResetsToday = row.effective_resets_today || 0;
-    const bestWave = row.best_wave || 0;
-    const lastClaim = row.last_claim_at || null;
+    const maxWave = prog.rows[0].max_wave || 0;
+    const bestWave = prog.rows[0].best_wave || 0;
+    const lastClaim = prog.rows[0].last_claim_at;
+    const resetsToday = prog.rows[0].resets_today;
+    const resetsDay = prog.rows[0].resets_day;
+
+    const effectiveResetsToday = resetsToday;
 
     if (effectiveResetsToday >= 2) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        error: 'Já usaste os 2 reinícios de hoje. Tenta amanhã.',
+        error: 'Já usaste os 2 reinícios hoje. Tenta amanhã.',
         resetsRemaining: 0
       });
     }
@@ -705,10 +695,10 @@ router.post('/infinite/reset', requireAuth, async (req, res) => {
     // Reset da run (max_wave) apenas; best_wave e last_claim_at (cooldown) mantêm-se.
     const upd = await client.query(
       `UPDATE infinite_progress
-       SET max_wave = 0, resets_today = $1, resets_day = CURRENT_DATE
-       WHERE id_user = $2
-       RETURNING max_wave, best_wave, resets_today, resets_day`,
-      [resetsUsed, userId]
+       SET max_wave = 0, resets_today = $1, best_wave = $2, last_claim_at = $3
+       WHERE id_user = $4
+       RETURNING max_wave, resets_today, resets_day`,
+      [resetsUsed, bestWave, lastClaim, userId]
     );
     if (upd.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -716,15 +706,6 @@ router.post('/infinite/reset', requireAuth, async (req, res) => {
     }
 
     await client.query('COMMIT');
-
-    const out = upd.rows[0];
-    setInfiniteCache(userId, {
-      max_wave: 0,
-      best_wave: bestWave,
-      last_claim_at: lastClaim,
-      resets_today: out.resets_today,
-      resets_day: out.resets_day
-    });
 
     return res.json({
       success: true,
@@ -736,50 +717,9 @@ router.post('/infinite/reset', requireAuth, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Erro ao reiniciar modo infinito:', err);
-    return res.status(500).json({ error: 'Erro ao reiniciar modo infinito.' });
+    res.status(500).json({ error: 'Erro ao reiniciar modo infinito.' });
   } finally {
     client.release();
-  }
-});
-
-// FM2: ranking do modo infinito (recorde best_wave). Apenas dados públicos.
-router.get('/infinite/ranking', requireAuth, async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-  const offset = (page - 1) * limit;
-  try {
-    const totalRes = await pool.query(
-      'SELECT COUNT(*)::int AS total FROM infinite_progress WHERE best_wave > 0'
-    );
-    const total = totalRes.rows[0] ? totalRes.rows[0].total : 0;
-
-    const r = await pool.query(
-      `SELECT ip.best_wave, ip.max_wave, u.id_user, u.name
-       FROM infinite_progress ip
-       JOIN users u ON u.id_user = ip.id_user
-       WHERE ip.best_wave > 0
-       ORDER BY ip.best_wave DESC, ip.max_wave DESC, ip.id_user ASC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
-
-    const entries = r.rows.map((row, index) => ({
-      rank: offset + index + 1,
-      id_user: row.id_user,
-      name: row.name,
-      bestWave: row.best_wave
-    }));
-
-    res.json({
-      entries,
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-      limit
-    });
-  } catch (err) {
-    console.error('Erro ao buscar ranking infinito:', err);
-    res.status(500).json({ error: 'Erro ao carregar ranking do modo infinito.' });
   }
 });
 
@@ -787,19 +727,20 @@ router.get('/infinite/ranking', requireAuth, async (req, res) => {
 router.get('/infinite/progress', requireAuth, async (req, res) => {
   const userId = req.user.id;
   try {
-    const cached = getInfiniteCache(userId);
+    const cached = infiniteProgressCache.get(userId);
     let base;
     if (cached) {
-      // Cache hit: calcula resets efetivos com base no CURRENT_DATE do BD (evita drift de fuso).
+      // Cache hit: calcula resets efetivos com base no CURRENT_DATE (evita drift de fuso).
       const eff = await pool.query(
         `SELECT CASE WHEN $1::date IS NULL OR $1::date <> CURRENT_DATE THEN 0 ELSE $2::int END AS effective_resets_today`,
         [cached.resets_day || null, cached.resets_today || 0]
       );
-      const effectiveResetsToday = (eff.rows[0] && eff.rows[0].effective_resets_today) || 0;
+      const effRow = eff.rows[0];
+      const effectiveResetsToday = (effRow && effRow.effective_resets_today) || 0;
       base = {
-        max_wave: cached.max_wave || 0,
-        best_wave: cached.best_wave || 0,
-        effective_resets_today: effectiveResetsToday
+        maxWave: cached.max_wave || 0,
+        bestWave: cached.best_wave || 0,
+        effectiveResetsToday
       };
     } else {
       // Cache miss: lê BD (sem mutação). Garante linha para utilizadores novos.
@@ -809,38 +750,32 @@ router.get('/infinite/progress', requireAuth, async (req, res) => {
         [userId]
       );
       const r = await pool.query(
-        `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day,
-                CASE WHEN resets_day IS NULL OR resets_day <> CURRENT_DATE THEN 0 ELSE resets_today END AS effective_resets_today
-         FROM infinite_progress WHERE id_user = $1`,
+        `SELECT max_wave, best_wave, last_claim_at, resets_today, resets_day, resets_day FROM infinite_progress WHERE id_user = $1`,
         [userId]
       );
       if (r.rows.length === 0) {
         return res.json({ maxWave: 0, bestWave: 0, resetsToday: 0, resetsRemaining: 2 });
       }
       const row = r.rows[0];
+      const effectiveResetsToday = (row && row.resets_today) || 0;
       base = {
-        max_wave: row.max_wave || 0,
-        best_wave: row.best_wave || 0,
-        effective_resets_today: row.effective_resets_today || 0
+        maxWave: row.max_wave || 0,
+        bestWave: row.best_wave || 0,
+        effectiveResetsToday
       };
-      setInfiniteCache(userId, {
-        max_wave: row.max_wave || 0,
-        best_wave: row.best_wave || 0,
-        last_claim_at: row.last_claim_at || null,
-        resets_today: row.resets_today || 0,
-        resets_day: row.resets_day || null
-      });
     }
 
+    const resetsRemaining = Math.max(0, 2 - (base.effectiveResetsToday ?? 0));
+
     return res.json({
-      maxWave: base.max_wave,
-      bestWave: base.best_wave,
-      resetsToday: base.effective_resets_today,
-      resetsRemaining: Math.max(0, 2 - base.effective_resets_today)
+      maxWave: base.maxWave,
+      bestWave: base.bestWave,
+      resetsToday: base.effectiveResetsToday ?? 0,
+      resetsRemaining
     });
   } catch (err) {
-    console.error('Erro ao carregar progresso do modo infinito:', err);
-    return res.status(500).json({ error: 'Erro ao carregar progresso do modo infinito.' });
+    console.error('Erro ao carregar progresso no modo infinito:', err);
+    res.status(500).json({ error: 'Erro ao carregar progresso no modo infinito.' });
   }
 });
 

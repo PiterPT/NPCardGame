@@ -3,8 +3,8 @@ const router = express.Router();
 const { pool } = require('../config/db');
 const { requireAuth, requireSelf } = require('../middleware/auth');
 
-// As imagens das cartas estao na BD em base64 (varios MB cada). Nunca vao dentro do JSON:
-// o JSON leva o URL da rota de imagens (com cache do navegador). PUBLIC_API_URL e opcional.
+// As imagens das cartas são servidas via endpoint /api/pvp/card-image/:id (B2/backblaze).
+// O JSON leva o URL da rota de imagens (com cache do navegador). PUBLIC_API_URL e opcional.
 const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || 'https://npcardgame.onrender.com').replace(/\/$/, '');
 const cardImageUrl = (idModel) => (idModel ? `${PUBLIC_API_URL}/api/pvp/card-image/${idModel}` : null);
 
