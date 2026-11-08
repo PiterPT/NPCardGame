@@ -77,11 +77,13 @@ const adminRoutes = require('./routes/adminRoutes');
 const cardRoutes = require('./routes/cardRoutes');
 const pvpRoutes = require('./routes/pvpRoutes');
 const presenceRoutes = require('./routes/presenceRoutes');
+const cardImageRoutes = require('./routes/cardImageRoutes');
 
 // Registar rotas com os prefixos corretos
 app.use('/api', authRoutes);
 app.use('/api', userRoutes);
 app.use('/api', gachaRoutes);
+app.use('/img', cardImageRoutes);
 app.use('/api/cards', cardRoutes);
 app.use('/api', pvpRoutes);
 app.use('/api', presenceRoutes);

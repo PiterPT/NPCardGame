@@ -152,7 +152,38 @@ async function attemptUpload(buffer, key, mime) {
   }
   await uploadResponse.json();
 
-  return `${auth.downloadUrl}/file/${cfg().bucketName}/${key.split('/').map(encodeURIComponent).join('/')}`;
+  const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+
+  // Bucket privado: devolve o URL do NOSSO servidor (rota /img/...), que serve a imagem
+  // autenticando-se na B2. Usa PUBLIC_API_URL (ou RENDER_EXTERNAL_URL no Render).
+  // PUBLIC_API_URL = URL do próprio backend (NÃO o do Supabase). No Render, RENDER_EXTERNAL_URL
+  // já vem definido automaticamente e serve de alternativa.
+  const publicApi = (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
+  if (publicApi) return `${publicApi}/img/${encodedKey}`;
+
+  // Bucket público: URL direto da B2
+  return `${auth.downloadUrl}/file/${cfg().bucketName}/${encodedKey}`;
+}
+
+/**
+ * Descarrega um ficheiro de um bucket privado (devolve a Response do fetch, com body em stream).
+ * @param {string} key - chave completa, ex.: 'cards/abc-card-1.png'
+ * @param {object} [extraHeaders] - ex.: { 'If-None-Match': etag }
+ */
+async function downloadFile(key, extraHeaders = {}) {
+  const doFetch = async () => {
+    const auth = await getAuth();
+    const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+    return fetch(`${auth.downloadUrl}/file/${cfg().bucketName}/${encodedKey}`, {
+      headers: { Authorization: auth.authToken, ...extraHeaders },
+    });
+  };
+  let res = await doFetch();
+  if (res.status === 401) {
+    authCache = null; // token expirado: renova e repete uma vez
+    res = await doFetch();
+  }
+  return res;
 }
 
 /**
@@ -213,6 +244,8 @@ function generateKey(originalName) {
 module.exports = {
   uploadImageBuffer,
   uploadImageBufferDirect,
+  downloadFile,
+  filePrefix,
   generateKey,
   isBase64Image,
   parseImageDataUrl,
