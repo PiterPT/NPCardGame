@@ -190,6 +190,19 @@ export default function Inventory({ user, setUser }) {
     }
   };
 
+  const handleSelectAllUnlocked = () => {
+    const unlockedIds = processedCards.filter(c => !c.is_locked).map(c => c.id_card);
+    const allUnlockedSelected = unlockedIds.every(id => selectedCards.includes(id));
+
+    if (allUnlockedSelected) {
+      // Se todas as desbloqueadas já estão selecionadas, remove-as da seleção
+      setSelectedCards(prev => prev.filter(id => !unlockedIds.includes(id)));
+    } else {
+      // Caso contrário, adiciona todas as desbloqueadas à seleção atual (sem duplicados)
+      setSelectedCards(prev => Array.from(new Set([...prev, ...unlockedIds])));
+    }
+  };
+
   const handleConfirmSell = async () => {
     const userId = getUserId();
     if (!userId || selectedCards.length === 0 || processing) return;
@@ -305,8 +318,8 @@ export default function Inventory({ user, setUser }) {
         )}
       </div>
 
-      {/* Barra de Pesquisa e Ordenação */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap', background: '#191926', padding: '15px', borderRadius: '8px', border: '1px solid #333' }}>
+      {/* Barra de Pesquisa, Ordenação e Botão Select All */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap', background: '#191926', padding: '15px', borderRadius: '8px', border: '1px solid #333', alignItems: 'center' }}>
         <div style={{ flex: 1, minWidth: '220px' }}>
           <input
             type="text"
@@ -316,6 +329,18 @@ export default function Inventory({ user, setUser }) {
             style={{ width: '100%', padding: '10px 12px', background: '#121212', color: '#fff', border: '1px solid #444', borderRadius: '6px', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
+        
+        {mode !== 'view' && (
+          <div>
+            <button
+              onClick={handleSelectAllUnlocked}
+              style={{ padding: '10px 15px', background: '#4b5563', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              ☑️ Selecionar Desbloqueadas
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <label style={{ fontSize: '13px', color: '#aaa' }}>Ordenar:</label>
           <select
