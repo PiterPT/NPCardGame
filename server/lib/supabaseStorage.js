@@ -39,14 +39,14 @@ function generateKey(originalName) {
  * Usa fetch nativo do Node.js 22 (não precisa de node-fetch)
  * 
  * O endpoint correto para URLs assinadas do Supabase Storage:
- * GET /rest/v1/object/sign?bucket={bucket}&name={path}&expiresIn={seconds}
+ * GET /rest/v1/object/sign?bucket={bucketName}&name={path}&expiresIn={seconds}
  * 
  * @param {Buffer} buffer - Dados da imagem
- * @param {string} path - Caminho no bucket (ex: "cards/filename")
+ * @param {string} path - Caminho no bucket (ex: "NPImages/filename")
  * @param {string} bucketName - Nome do bucket (default: "NPImages" - bucket do projeto NPImages)
  * @returns {Promise<Object>} Resultado com url e status
  */
-async function uploadImageToSupabaseStorage(buffer, path, bucketName = 'card-images') {
+async function uploadImageToSupabaseStorage(buffer, path, bucketName = 'NPImages') {
   if (!SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada - não é possível fazer upload');
   }
@@ -92,7 +92,7 @@ async function uploadImageToSupabaseStorage(buffer, path, bucketName = 'card-ima
     
     return {
       success: true,
-      storageUrl: uploadUrl, // Usamos a signedUrl diretamente
+      storageUrl: uploadUrl,
       key: path,
     };
   } catch (error) {
@@ -109,7 +109,7 @@ async function uploadImageToSupabaseStorage(buffer, path, bucketName = 'card-ima
  * @param {string} bucketName - Nome do bucket Supabase
  * @returns {Promise<Object>} Resultado com url, key e status
  */
-async function migrateBase64ToSupabase(base64DataURL, cardId, bucketName = 'card-images') {
+async function migrateBase64ToSupabase(base64DataURL, cardId, bucketName = 'NPImages') {
   try {
     // Decodificar base64
     const base64Data = base64DataURL.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, '');
@@ -149,7 +149,7 @@ async function migrateBase64ToSupabase(base64DataURL, cardId, bucketName = 'card
  * @param {string} bucketName - Nome do bucket Supabase
  * @returns {Promise<Object>} Resumo da migração
  */
-async function migrateAllImagesToSupabase(bucketName = 'card-images') {
+async function migrateAllImagesToSupabase(bucketName = 'NPImages') {
   try {
     // Conectar no PostgreSQL
     const { query } = require('../config/db');

@@ -1,0 +1,29 @@
+SYNTAX CHECK RESULTS
+====================
+
+Checking: server/index.js
+- Line 75: const adminRoutes = require('./routes/adminRoutes');
+- Status: Will fail if adminRoutes.js has syntax error
+
+Checking: server/routes/adminRoutes.js
+- Last line: module.exports = router;
+- Status: Need to verify
+
+Checking: server/lib/b2Upload.js
+- Last line: module.exports = { ... };
+- Status: Need to verify
+
+Checking: server/lib/supabaseStorage.js
+- Last line: module.exports = { ... };
+- Status: Need to verify
+
+Checking: server/routes/gachaRoutes.js
+- Status: Need to verify
+
+Checking: server/routes/cardRoutes.js
+- Status: Need to verify
+
+Checking: server\scripts\migrateImagesToB2.js
+- Status: File may not exist (scripts dir was empty earlier)
+
+CONCLUSION: The SyntaxError at index.js:75:21 is likely caused by a syntax error in one of the required modules, most likely adminRoutes.js.
