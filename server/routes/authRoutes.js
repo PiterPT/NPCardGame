@@ -40,8 +40,8 @@ router.post('/auth/register', async (req, res) => {
 
       // 3. Inserir utilizador com a senha encriptada e moedas iniciais (ex: 1000 Ryo)
       return client.query(
-        'INSERT INTO users (name, email, password, coins) VALUES ($1, $2, $3, $4) RETURNING id_user, name, email, coins, diamonds, role',
-        [name, email, hashedPassword, 1000]
+        'INSERT INTO users (name, email, password, coins, diamonds) VALUES ($1, $2, $3, $4, $5) RETURNING id_user, name, email, coins, diamonds, role',
+        [name, email, hashedPassword, 1000, 600]
       );
     });
 
