@@ -484,12 +484,22 @@ router.get('/pvp/cards/:id', requireAuth, requireSelf('id'), async (req, res) =>
 // Serve a imagem de um modelo de carta como ficheiro (o navegador guarda-a em cache).
 router.get('/pvp/card-image/:id', async (req, res) => {
   const id = toInt(req.params.id);
-  if (!id) return res.status(400).end();
+  if (!id) return res.status(400).json({ error: 'ID de carta inválido.' });
   try {
     const r = await pool.query('SELECT image_url FROM cardmodel WHERE id_modelcard = $1', [id]);
     const src = r.rows[0] && r.rows[0].image_url;
-    if (!src) return res.status(404).end();
+    if (!src) return res.status(404).json({ error: 'Imagem não encontrada.' });
 
+    // Se for URL externa (https?://), redirect - permite que o browser/buscaruse a URL diretamente
+    if (/^https?:\/\//i.test(src)) {
+      res.set({
+        'Cache-Control': 'public, max-age=86400',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      });
+      return res.redirect(302, src);
+    }
+
+    // Se for base64 data URL (legacy - base64 na BD), servir como antes
     const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is.exec(src);
     if (m) {
       res.set({
@@ -499,11 +509,22 @@ router.get('/pvp/card-image/:id', async (req, res) => {
       });
       return res.send(Buffer.from(m[2], 'base64'));
     }
-    if (/^https?:\/\//i.test(src)) return res.redirect(302, src);
-    return res.status(404).end();
+
+    // Se for URL do B2 (provavelmente https://... da B2), servir com headers de cache
+    // O browser pode buscar diretamente a URL da B2
+    if (/^https?:\/\//i.test(src)) {
+      res.set({
+        'Cache-Control': 'public, max-age=86400',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      });
+      return res.redirect(302, src);
+    }
+
+    // Fallback desconhecido
+    return res.status(404).json({ error: 'Formato de imagem desconhecido.' });
   } catch (err) {
     console.error('Erro ao servir imagem:', err);
-    res.status(500).end();
+    res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 });
 

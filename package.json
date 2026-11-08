@@ -8,5 +8,8 @@
     "client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
     "testServer": "npm run start --prefix server"
+  },
+  "dependencies": {
+    "backblaze-b2": "^1.7.1"
   }
 }
