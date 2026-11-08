@@ -1,236 +1,210 @@
 /**
- * Módulo de upload para Backblaze B2 (S3 compatível)
- * 
- * Este módulo foi desenhado para funcionar mesmo sem o pacote 'backblaze-b2'
- * instalado, usando a API REST direta da Backblaze desde o início.
- * 
- * Se o pacote backblaze-b2 estiver disponível, tenta usá-lo como primeiro
- * esforço, fazendo fallback para a API REST direta se falhar.
- * Se o pacote NÃO estiver disponível, usa imediatamente a API REST direta.
+ * Módulo de upload para Backblaze B2 (API nativa REST v2).
+ *
+ * Usa apenas fetch (Node 18+) e crypto — não depende do pacote 'backblaze-b2'.
+ * Fluxo: b2_authorize_account -> (b2_list_buckets, se preciso) -> b2_get_upload_url -> upload.
+ * A autorização é guardada em memória (válida 24h) e refeita automaticamente se expirar.
  */
+const crypto = require('crypto');
 
-// Validar variáveis de ambiente necessárias ANTES de tentar carregar o pacote
 const REQUIRED_VARS = ['B2_KEY_ID', 'B2_APPLICATION_KEY', 'B2_BUCKET_NAME'];
-const missingVars = REQUIRED_VARS.filter(v => !process.env[v]);
+const missingVars = REQUIRED_VARS.filter((v) => !process.env[v]);
 if (missingVars.length > 0) {
   console.error(`⚠️ Variáveis de ambiente B2 não configuradas: ${missingVars.join(', ')}.`);
   console.error('   Funcionalidade de upload de imagens estará desativada até configurar as credenciais.');
 }
 
-// Variáveis de ambiente
-const B2_KEY_ID = process.env.B2_KEY_ID;
-const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY;
-const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME;
+// Lidas no momento do uso (o .env pode ser carregado depois deste módulo)
+const cfg = () => ({
+  keyId: process.env.B2_KEY_ID,
+  appKey: process.env.B2_APPLICATION_KEY,
+  bucketName: process.env.B2_BUCKET_NAME,
+  bucketIdEnv: process.env.B2_BUCKET_ID, // opcional
+});
 
-// Tentar carregar a biblioteca b2-node, mas tornar opcional
-let b2 = null;
-try {
-  const BackblazeB2 = require('backblaze-b2');
-  b2 = new BackblazeB2({
-    accountId: B2_KEY_ID,
-    applicationKey: B2_APPLICATION_KEY,
+// ------------------------------------------------------------
+// Tipos de imagem permitidos (SVG excluído de propósito: pode conter scripts)
+// ------------------------------------------------------------
+const MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+
+const DATA_URL_REGEX = /^data:(image\/[a-z0-9.+\-]+);base64,/i;
+
+function isBase64Image(str) {
+  return typeof str === 'string' && DATA_URL_REGEX.test(str);
+}
+
+/**
+ * Interpreta um data URL de imagem.
+ * @returns {{ buffer: Buffer, mime: string, ext: string }}
+ * @throws Error se o formato não for suportado
+ */
+function parseImageDataUrl(dataUrl) {
+  const match = typeof dataUrl === 'string' ? dataUrl.match(DATA_URL_REGEX) : null;
+  if (!match) throw new Error('Data URL de imagem inválido.');
+  const mime = match[1].toLowerCase();
+  const ext = MIME_TO_EXT[mime];
+  if (!ext) throw new Error(`Formato de imagem não suportado (${mime}). Use JPEG, PNG, WebP ou GIF.`);
+  const buffer = Buffer.from(dataUrl.slice(match[0].length), 'base64');
+  return { buffer, mime, ext };
+}
+
+function guessMimeFromName(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(name || '');
+  const ext = m ? '.' + m[1].toLowerCase() : '';
+  const found = Object.entries(MIME_TO_EXT).find(([, e]) => e === ext);
+  return found ? found[0] : 'b2/x-auto';
+}
+
+// ------------------------------------------------------------
+// Autorização (com cache em memória)
+// ------------------------------------------------------------
+let authCache = null; // { apiUrl, downloadUrl, authToken, bucketId, expiresAt }
+const AUTH_TTL_MS = 23 * 60 * 60 * 1000; // tokens duram 24h; renova com folga
+
+async function getAuth() {
+  if (authCache && authCache.expiresAt > Date.now()) return authCache;
+
+  const { keyId, appKey, bucketName, bucketIdEnv } = cfg();
+  if (!keyId || !appKey || !bucketName) {
+    throw new Error('Credenciais B2 incompletas para upload');
+  }
+
+  const authResponse = await fetch('https://api.backblazeb2.com/b2api/v2/b2_authorize_account', {
+    method: 'GET',
+    headers: { Authorization: 'Basic ' + Buffer.from(`${keyId}:${appKey}`).toString('base64') },
   });
-  console.log('✅ Biblioteca b2-node carregada com sucesso');
-} catch (e) {
-  console.log('⚠️ Biblioteca backblaze-b2 não instalada - usando API REST direta desde o início');
-}
-
-// ============================================================
-// Funções de Upload para Backblaze B2
-// ============================================================
-
-/**
- * Fazer upload de um buffer para o Backblaze B2 usando a biblioteca b2-node
- * @param {Buffer} buffer - Dados do ficheiro (imagem)
- * @param {string} originalName - Nome original do ficheiro
- * @returns {Promise<string>} URL pública do ficheiro uploadado
- */
-async function uploadImageBufferLibrary(buffer, originalName) {
-  if (!b2) {
-    throw new Error('Cliente B2 não inicializado - usando API REST direta');
+  if (!authResponse.ok) {
+    throw new Error(`Falha ao obter token de autorização da B2: ${authResponse.status} - ${await authResponse.text()}`);
+  }
+  const authData = await authResponse.json();
+  if (!authData.apiUrl || !authData.downloadUrl || !authData.authorizationToken) {
+    console.error('❌ Estrutura inesperada na resposta de auth B2:', JSON.stringify(authData, null, 2));
+    throw new Error('Resposta de autenticação B2 inválida - estrutura inesperada');
   }
 
+  // bucketId: chave restrita a um bucket -> allowed.bucketId; senão B2_BUCKET_ID; senão resolve por nome
+  let bucketId = authData.allowed?.bucketId || bucketIdEnv;
+  if (!bucketId) {
+    const listRes = await fetch(`${authData.apiUrl}/b2api/v2/b2_list_buckets`, {
+      method: 'POST',
+      headers: { Authorization: authData.authorizationToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: authData.accountId, bucketName }),
+    });
+    if (!listRes.ok) {
+      throw new Error(`Falha ao listar buckets: ${listRes.status} - ${await listRes.text()}`);
+    }
+    bucketId = (await listRes.json()).buckets?.[0]?.bucketId;
+  }
+  if (!bucketId) throw new Error('Bucket ID não encontrado (verifique B2_BUCKET_NAME / B2_BUCKET_ID)');
+
+  authCache = {
+    apiUrl: authData.apiUrl,
+    downloadUrl: authData.downloadUrl,
+    authToken: authData.authorizationToken,
+    bucketId,
+    expiresAt: Date.now() + AUTH_TTL_MS,
+  };
+  return authCache;
+}
+
+// ------------------------------------------------------------
+// Upload
+// ------------------------------------------------------------
+async function attemptUpload(buffer, key, mime) {
+  const auth = await getAuth();
+
+  const uploadUrlResponse = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_upload_url`, {
+    method: 'POST',
+    headers: { Authorization: auth.authToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bucketId: auth.bucketId }),
+  });
+  if (!uploadUrlResponse.ok) {
+    const err = new Error(`Falha ao obter upload URL: ${uploadUrlResponse.status} - ${await uploadUrlResponse.text()}`);
+    err.status = uploadUrlResponse.status;
+    throw err;
+  }
+  const { uploadUrl, authorizationToken: uploadAuthToken } = await uploadUrlResponse.json();
+
+  // A B2 exige o SHA1 do conteúdo (hex)
+  const sha1 = crypto.createHash('sha1').update(buffer).digest('hex');
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: uploadAuthToken,
+      'X-Bz-File-Name': encodeURIComponent(key),
+      'Content-Type': mime || 'b2/x-auto',
+      'X-Bz-Content-Sha1': sha1,
+    },
+    body: buffer,
+  });
+  if (!uploadResponse.ok) {
+    const err = new Error(`Erro no upload B2: ${uploadResponse.status} - ${await uploadResponse.text()}`);
+    err.status = uploadResponse.status;
+    throw err;
+  }
+  await uploadResponse.json();
+
+  return `${auth.downloadUrl}/file/${cfg().bucketName}/${key}`;
+}
+
+/**
+ * Faz upload de um buffer para o B2 e devolve a URL pública.
+ * @param {Buffer} buffer
+ * @param {string} originalName - deve incluir a extensão (ex.: 'card-123.png')
+ * @param {string} [mime] - content-type; se omitido, deduz da extensão
+ */
+async function uploadImageBuffer(buffer, originalName, mime) {
   const key = generateKey(originalName);
+  const contentType = mime || guessMimeFromName(originalName);
 
   try {
-    const uploadOptions = {
-      bucketName: B2_BUCKET_NAME,
-      fileName: key,
-      data: buffer,
-    };
-
-    let uploadResponse;
+    let url;
     try {
-      uploadResponse = await b2.uploadFile(uploadOptions);
-    } catch (err1) {
-      if (err1.message && err1.message.includes('Invalid URL')) {
-        console.log('⚠️ Erro de URL detectado, tentando com endpoint S3-compatível...');
-        // Se a b2-node tiver beengiven um endpoint opcional, usá-lo
-        try {
-          uploadOptions.endpoint = 'https://backblaze.b2.cloud.storage';
-          uploadResponse = await b2.uploadFile(uploadOptions);
-        } catch (err2) {
-          throw err1;
-        }
+      url = await attemptUpload(buffer, key, contentType);
+    } catch (err) {
+      // Token expirado/inválido ou falha temporária (401/5xx): renova a autorização e tenta uma vez
+      if (err.status === 401 || err.status >= 500) {
+        console.warn(`⚠️ Upload B2 falhou (${err.status}), a renovar autorização e a repetir...`);
+        authCache = null;
+        url = await attemptUpload(buffer, key, contentType);
       } else {
-        throw err1;
+        throw err;
       }
     }
-
-    const publicUrl = uploadResponse.fileInfo.url + '/' + key;
-    console.log(`✅ Imagem uploadada para B2 (biblioteca) — chave: ${key}, URL: ${publicUrl}`);
-    return publicUrl;
+    console.log(`✅ Upload B2 — chave: ${key}, URL: ${url}`);
+    return url;
   } catch (error) {
-    console.error('❌ Erro ao upload para B2 (biblioteca):', error.message);
+    console.error('❌ Erro ao upload para B2:', error.message);
     throw error;
   }
 }
 
-/**
- * Fazer upload de um buffer para o Backblaze B2 usando a API REST direta
- * @param {Buffer} buffer - Dados do ficheiro (imagem)
- * @param {string} originalName - Nome original do ficheiro
- * @returns {Promise<string>} URL pública do ficheiro uploadado
- */
-async function uploadImageBufferDirect(buffer, originalName) {
-  if (!B2_KEY_ID || !B2_APPLICATION_KEY || !B2_BUCKET_NAME) {
-    throw new Error('Credenciais B2 incompletas para upload direto');
-  }
-
-  try {
-    // 1. Get authorization token
-    const authResponse = await fetch('https://api.backblaze.com/b2api/v2/b2_authorize_account', {
-      method: 'GET',
-      headers: {
-        'Authorization': 'Basic ' + Buffer.from(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`).toString('base64')
-      }
-    });
-
-    if (!authResponse.ok) {
-      const errorText = await authResponse.text();
-      throw new Error(`Falha ao obter token de autorização da B2: ${authResponse.status} - ${errorText}`);
-    }
-
-    const authData = await authResponse.json();
-    
-    // Verificar campos obrigatórios (root level)
-    if (!authData.apiUrl || !authData.downloadUrl || !authData.authorizationToken) {
-      console.error('❌ Estrutura inesperada na resposta de auth B2:', JSON.stringify(authData, null, 2));
-      throw new Error('Resposta de autenticação B2 inválida - estrutura inesperada');
-    }
-    
-    const apiUrl = authData.apiUrl;
-    const authToken = authData.authorizationToken;
-    const downloadUrl = authData.downloadUrl;
-
-    // 2. Get upload URL for the bucket (b2_get_upload_url)
-    // Precisamos do bucketId - está em authData.allowed.bucketId
-    const bucketId = authData.allowed?.bucketId;
-    if (!bucketId) {
-      throw new Error('Bucket ID não encontrado na resposta de auth B2');
-    }
-
-    const uploadUrlResponse = await fetch(`${authData.apiUrl}/b2api/v2/b2_get_upload_url`, {
-      method: 'POST',
-      headers: {
-        'Authorization': authData.authorizationToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ bucketId })
-    });
-
-    if (!uploadUrlResponse.ok) {
-      const errorText = await uploadUrlResponse.text();
-      throw new Error(`Falha ao obter upload URL: ${uploadUrlResponse.status} - ${errorText}`);
-    }
-
-    const uploadUrlData = await uploadUrlResponse.json();
-    const uploadUrl = uploadUrlData.uploadUrl;
-    const uploadAuthToken = uploadUrlData.authorizationToken;
-
-    // 3. Upload do ficheiro
-    const key = generateKey(originalName);
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': uploadAuthToken,
-        'X-Bz-File-Name': key,
-        'Content-Type': 'b2/x-auto',
-      },
-      body: buffer
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Erro no upload B2 direto: ${uploadResponse.status} - ${errorText}`);
-    }
-
-    // 3. GET a URL pública
-    const result = await uploadResponse.json();
-    const publicUrl = `${authData.downloadUrl}/file/${B2_BUCKET_NAME}/${key}`;
-
-    console.log(`✅ Upload direto B2 — chave: ${key}, URL: ${publicUrl}`);
-    return publicUrl;
-  } catch (error) {
-    console.error('❌ Erro ao upload para B2 (API direta):', error.message);
-    throw error;
-  }
-}
+// Mantido por compatibilidade com código que importava o nome antigo
+const uploadImageBufferDirect = uploadImageBuffer;
 
 /**
- * Fazer upload de um buffer para o Backblaze B2
- * Tenta usar a biblioteca b2-node primeiro, fallback para API REST direta
- * @param {Buffer} buffer - Dados do ficheiro (imagem)
- * @param {string} originalName - Nome original do ficheiro (para preservar extensão)
- * @returns {Promise<string>} URL pública do ficheiro uploadado
- */
-async function uploadImageBuffer(buffer, originalName) {
-  // Se a biblioteca b2-node estiver disponível, tentar usá-la primeiro
-  if (b2) {
-    try {
-      console.log('🔨 Tentando upload via biblioteca b2-node...');
-      const result = await uploadImageBufferLibrary(buffer, originalName);
-      console.log('✅ Upload via biblioteca b2-node bem-sucedido');
-      return result;
-    } catch (b2Error) {
-      console.log('⚠️ Biblioteca b2-node falhou, tentando API REST direta...');
-      console.log('   Erro da biblioteca:', b2Error.message);
-    }
-  }
-
-  // Fallback: usar API REST direta
-  console.log('🌐 Usando API REST direta da B2');
-  return await uploadImageBufferDirect(buffer, originalName);
-}
-
-/**
- * Gerar uma chave única para o ficheiro na B2
- * Formato: ${timestamp}-${random}-${originalName}
- * @param {string} originalName - Nome original do ficheiro
- * @returns {string} Chave única formatada para B2
+ * Gera uma chave única: ${timestamp}-${random}-${nome}${ext}
  */
 function generateKey(originalName) {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).slice(2, 8);
   const nameWithoutExt = originalName ? originalName.replace(/\.[^/.]+$/, '') : 'card-image';
-  const ext = originalName ? originalName.match(/\.[^/.]+$/) || '' : '';
+  const extMatch = originalName ? originalName.match(/\.[^/.]+$/) : null;
+  const ext = extMatch ? extMatch[0] : '';
   return `${timestamp}-${random}-${nameWithoutExt}${ext}`;
-}
-
-/**
- * Verificar se a string parece ser um base64 data URL de imagem
- * @param {string} str - String a verificar
- * @returns {boolean} true se parecer base64 data URL de imagem
- */
-function isBase64Image(str) {
-  return typeof str === 'string' && /^data:image\/[a-z0-9.+\-]+;base64,/i.test(str);
 }
 
 module.exports = {
   uploadImageBuffer,
   uploadImageBufferDirect,
-  uploadImageBufferLibrary,
   generateKey,
   isBase64Image,
+  parseImageDataUrl,
 };

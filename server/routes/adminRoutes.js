@@ -4,14 +4,10 @@ const { pool } = require('../config/db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const b2Upload = require('../lib/b2Upload');
 
-// Middleware para verificar se o utilizador tem o cargo de Admin.
-// MIGRAÇÃO: antes bastava um cabeçalho "admin-id" forjado pelo cliente (IDs sequenciais,
-// enumeráveis). Agora: JWT válido (requireAuth) + role lido FRESCO da base de dados (requireAdmin).
+// JWT válido (requireAuth) + role lido FRESCO da base de dados (requireAdmin).
 const verifyAdmin = [requireAuth, requireAdmin];
 
-// CORREÇÃO: a verificação aplica-se APENAS a /admin/*.
-// Antes, router.use(verifyAdmin) sem caminho intercetava TODOS os pedidos /api/* que passassem
-// por este router (perfil, cards/sell, cards/feed, gacha...) e devolvia "Acesso negado" a utilizadores normais.
+// A verificação aplica-se APENAS a /admin/*.
 router.use('/admin', verifyAdmin);
 
 // ==========================================
@@ -21,39 +17,55 @@ router.use('/admin', verifyAdmin);
 // Limite máximo de imagem (2MB) — igual ao frontend
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
-// Processa o campo image_url vindo do corpo do pedido.
-// Se for base64 data URL, faz upload para B2 e retorna URL pública.
-// Se já for uma URL externa (https?://), mantém como está.
-// Se falhar upload, retorna null (não guarda base64).
+// Erro com código HTTP para as rotas responderem corretamente
+class ImageError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Processa o campo image_url vindo do corpo do pedido.
+ *  - vazio/undefined/null      -> devolve null (sem imagem nova)
+ *  - URL externa (http/https)  -> mantém
+ *  - data URL base64           -> valida, faz upload para B2 e devolve a URL pública
+ *  - qualquer outra coisa      -> ImageError 400
+ * Se o upload falhar lança ImageError 502 (nunca grava base64 nem apaga a imagem existente).
+ */
 async function processImageUrl(imageUrl) {
   if (!imageUrl) return null;
-  // Se já for URL externa, manter
   if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-  // Se for base64 image, fazer upload para B2
+
   if (b2Upload.isBase64Image(imageUrl)) {
+    let parsed;
     try {
-      const buffer = Buffer.from(imageUrl.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, ''), 'base64');
-      // Validação server-side do tamanho
-      if (buffer.length > MAX_IMAGE_BYTES) {
-        throw new Error(`Imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB). Máximo: 2 MB.`);
-      }
-      const imageUrlB2 = await b2Upload.uploadImageBuffer(buffer, 'card-' + Date.now());
-      return imageUrlB2;
+      parsed = b2Upload.parseImageDataUrl(imageUrl);
     } catch (err) {
-      console.error('⚠️ Erro ao processar base64 para B2:', err.message);
-      // Em caso de erro, retorna null (não guarda base64 na BD)
-      return null;
+      throw new ImageError(err.message, 400);
+    }
+    const { buffer, mime, ext } = parsed;
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      throw new ImageError(
+        `Imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB). Máximo: 2 MB.`,
+        400
+      );
+    }
+    try {
+      return await b2Upload.uploadImageBuffer(buffer, 'card-' + Date.now() + ext, mime);
+    } catch (err) {
+      console.error('⚠️ Erro ao fazer upload da imagem para B2:', err.message);
+      throw new ImageError('Falha ao enviar a imagem para o armazenamento (B2).', 502);
     }
   }
-  // Caso estranho, retornar null
-  return null;
+
+  throw new ImageError('image_url inválido: use um URL http(s) ou um data URL de imagem.', 400);
 }
 
 // ==========================================
 // GESTÃO DE UTILIZADORES
 // ==========================================
 
-// Listar todos os utilizadores
 router.get('/admin/users', async (req, res) => {
   try {
     const result = await pool.query('SELECT id_user, name, email, coins, role FROM Users ORDER BY id_user ASC');
@@ -64,7 +76,6 @@ router.get('/admin/users', async (req, res) => {
   }
 });
 
-// Atualizar utilizador (moedas ou cargo)
 router.put('/admin/users/:id', async (req, res) => {
   const { coins, role } = req.body;
   const { id } = req.params;
@@ -77,7 +88,6 @@ router.put('/admin/users/:id', async (req, res) => {
   }
 });
 
-// Eliminar utilizador
 router.delete('/admin/users/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -93,7 +103,6 @@ router.delete('/admin/users/:id', async (req, res) => {
 // GESTÃO DE MODELOS DE CARTAS (cardmodel)
 // ==========================================
 
-// Listar todas as cartas modelo
 router.get('/admin/cards', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM cardmodel ORDER BY id_modelcard ASC');
@@ -104,45 +113,50 @@ router.get('/admin/cards', async (req, res) => {
   }
 });
 
-// Adicionar nova carta modelo (com o campo classe)
+// Adicionar nova carta modelo
 router.post('/admin/cards', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   try {
-    // Processar image_url: se for base64, upload para B2; se for URL externa, manter
+    // Falha de upload => erro claro (não cria a carta sem imagem em silêncio)
     const processedImageUrl = await processImageUrl(image_url);
     const result = await pool.query(
-      `INSERT INTO cardmodel (name, vida, tai, nin, image_url, classe) 
+      `INSERT INTO cardmodel (name, vida, tai, nin, image_url, classe)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [name, vida, tai, nin, processedImageUrl, classe || 'E']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    if (err instanceof ImageError) return res.status(err.status).json({ error: err.message });
     console.error('Erro ao adicionar carta modelo:', err.message, err.type);
     res.status(500).json({ error: 'Erro ao inserir novo modelo de carta.' });
   }
 });
 
-// Editar carta modelo existente (com o campo classe)
+// Editar carta modelo existente
 router.put('/admin/cards/:id', async (req, res) => {
   const { name, vida, tai, nin, image_url, classe } = req.body;
   const { id } = req.params;
   try {
-    // Processar image_url: se for base64, upload para B2; se for URL externa, manter
     const processedImageUrl = await processImageUrl(image_url);
-    await pool.query(
-      `UPDATE cardmodel 
-       SET name = $1, vida = $2, tai = $3, nin = $4, image_url = $5, classe = $6 
+    // COALESCE: se não veio imagem nova, mantém a que já existe (nunca apaga por engano)
+    const result = await pool.query(
+      `UPDATE cardmodel
+       SET name = $1, vida = $2, tai = $3, nin = $4,
+           image_url = COALESCE($5, image_url), classe = $6
        WHERE id_modelcard = $7`,
       [name, vida, tai, nin, processedImageUrl, classe || 'E', id]
     );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Modelo de carta não encontrado.' });
+    }
     res.json({ message: 'Modelo de carta atualizado com sucesso!' });
   } catch (err) {
+    if (err instanceof ImageError) return res.status(err.status).json({ error: err.message });
     console.error('Erro ao atualizar carta modelo:', err.message, err.type);
     res.status(500).json({ error: 'Erro ao guardar alterações da carta.' });
   }
 });
 
-// Remover carta modelo
 router.delete('/admin/cards/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -157,9 +171,8 @@ router.delete('/admin/cards/:id', async (req, res) => {
 // ==========================================
 // UPLOAD DE IMAGEM PARA B2
 // ==========================================
-// Endpoint para fazer upload de uma imagem para o Backblaze B2.
-// Body aceita: { image_base64: "data:image/...;base64,..." }
-// Retorna: { image_url: "https://..." } — URL pública para guardar na coluna image_url da cardmodel
+// Body: { image_base64: "data:image/...;base64,..." }
+// Retorna: { image_url: "https://..." }
 router.post('/admin/card-image-upload', async (req, res) => {
   try {
     const { image_base64 } = req.body;
@@ -169,18 +182,12 @@ router.post('/admin/card-image-upload', async (req, res) => {
     if (!b2Upload.isBase64Image(image_base64)) {
       return res.status(400).json({ error: 'O campo image_base64 deve ser um data URL de imagem (data:image/...;base64,...).' });
     }
-    // Extrair o buffer removendo o prefixo data:
-    const base64Data = image_base64.replace(/^data:image\/[a-z0-9.+\-]+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    // Validação server-side do tamanho
-    if (buffer.length > MAX_IMAGE_BYTES) {
-      return res.status(400).json({ error: `Imagem demasiado grande (${(buffer.length / 1024 / 1024).toFixed(2)} MB). Máximo: 2 MB.` });
-    }
-    const imageUrl = await b2Upload.uploadImageBuffer(buffer, 'card-upload-' + Date.now());
+    const imageUrl = await processImageUrl(image_base64);
     res.json({ image_url: imageUrl });
   } catch (err) {
+    if (err instanceof ImageError) return res.status(err.status).json({ error: err.message });
     console.error('Erro no upload de imagem B2:', err.message);
-    res.status(500).json({ error: 'Falha no upload para Backblaze B2: ' + err.message });
+    res.status(500).json({ error: 'Falha no upload para Backblaze B2.' });
   }
 });
 
