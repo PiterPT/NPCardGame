@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Loader from '../components/Loader';
+import MiniCard from '../components/MiniCard';
 import { API_URL, authFetch } from '../lib/api';
 import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
+import '../styles/inventory.css';
 
 export default function Inventory({ user, setUser, openCard }) {
   const [cards, setCards] = useState([]);
@@ -262,27 +264,40 @@ export default function Inventory({ user, setUser, openCard }) {
   if (loading) return <Loader text="A carregar o inventário..." />;
 
   return (
-    <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="inventory-container">
       <h2>📜 Inventário de Cartas do Shinobi</h2>
 
       {notification && (
-        <div style={{ padding: '12px 20px', borderRadius: '8px', marginBottom: '15px', fontWeight: 'bold', background: notification.type === 'success' ? '#15803d' : '#b91c1c', color: '#fff' }}>
-          {notification.text}
-        </div>
+        <div className={`notice notice--${notification.type}`}>{notification.text}</div>
       )}
 
       {/* Painel de Modos */}
-      <div style={{ display: 'flex', gap: '15px', margin: '15px 0', background: '#1e1e2e', padding: '15px', borderRadius: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 'bold', color: '#ff9900' }}>Modo:</span>
-        <button onClick={() => { setMode('view'); setSelectedCards([]); setTargetCardForFeed(null); }} style={{ padding: '8px 15px', background: mode === 'view' ? '#ff9900' : '#333', color: mode === 'view' ? '#000' : '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>👁️ Ver</button>
-        <button onClick={() => { setMode('sell'); setSelectedCards([]); setTargetCardForFeed(null); }} style={{ padding: '8px 15px', background: mode === 'sell' ? '#ef4444' : '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>💰 Vender</button>
-        <button onClick={() => { setMode('feed'); setSelectedCards([]); setTargetCardForFeed(null); }} style={{ padding: '8px 15px', background: mode === 'feed' ? '#3b82f6' : '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>✨ Feed</button>
+      <div className="mode-panel">
+        <span className="mode-panel__label">Modo:</span>
+        <button
+          className={`btn btn--sm ${mode === 'view' ? 'btn--primary' : 'btn--secondary'}`}
+          onClick={() => { setMode('view'); setSelectedCards([]); setTargetCardForFeed(null); }}
+        >
+          👁️ Ver
+        </button>
+        <button
+          className={`btn btn--sm ${mode === 'sell' ? 'btn--danger' : 'btn--secondary'}`}
+          onClick={() => { setMode('sell'); setSelectedCards([]); setTargetCardForFeed(null); }}
+        >
+          💰 Vender
+        </button>
+        <button
+          className={`btn btn--sm ${mode === 'feed' ? 'mode-btn--feed' : 'btn--secondary'}`}
+          onClick={() => { setMode('feed'); setSelectedCards([]); setTargetCardForFeed(null); }}
+        >
+          ✨ Feed
+        </button>
 
         {mode === 'sell' && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Total: 💰 {sellPreview} Ryos</span>
+          <div className="mode-panel__actions">
+            <span className="mode-panel__total">Total: 💰 {sellPreview} Ryos</span>
             {selectedCards.length > 0 && (
-              <button onClick={handleConfirmSell} disabled={processing} style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+              <button className="btn btn--sm btn--success" onClick={handleConfirmSell} disabled={processing}>
                 {processing ? '⏳ A processar...' : `Vender (${selectedCards.length})`}
               </button>
             )}
@@ -290,7 +305,7 @@ export default function Inventory({ user, setUser, openCard }) {
         )}
 
         {mode === 'feed' && targetCardForFeed && selectedCards.filter(id => id !== targetCardForFeed.id_card).length > 0 && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="mode-panel__actions">
             {feedPreview && (() => {
               const previewStats = feedPreview.previewStats || {};
               const previewCard = {
@@ -301,8 +316,8 @@ export default function Inventory({ user, setUser, openCard }) {
               };
               const levelUp = (feedPreview.previewLevel || 1) > (targetCardForFeed.level || 1);
               return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#111827', border: '1px solid #334155', borderRadius: '8px', padding: '8px 10px' }}>
-                  <span style={{ fontSize: '12px', color: '#93c5fd', fontWeight: 'bold' }}>
+                <div className="preview-panel">
+                  <span className="preview-panel__xp">
                     ✨ +{feedPreview.totalXpGanha || 0} XP
                     {levelUp ? ` · Nvl ${targetCardForFeed.level || 1} → ${feedPreview.previewLevel}` : ` · Nvl ${feedPreview.previewLevel || 1}`}
                   </span>
@@ -311,7 +326,7 @@ export default function Inventory({ user, setUser, openCard }) {
                 </div>
               );
             })()}
-            <button onClick={handleConfirmFeed} disabled={processing} style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+            <button className="btn btn--sm btn--success" onClick={handleConfirmFeed} disabled={processing}>
               {processing ? '⏳ A processar...' : 'Alimentar'}
             </button>
           </div>
@@ -319,34 +334,30 @@ export default function Inventory({ user, setUser, openCard }) {
       </div>
 
       {/* Barra de Pesquisa, Ordenação e Botão Select All */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', flexWrap: 'wrap', background: '#191926', padding: '15px', borderRadius: '8px', border: '1px solid #333', alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: '220px' }}>
+      <div className="filter-bar">
+        <div className="field filter-bar__search">
           <input
             type="text"
+            className="field__input"
             placeholder="🔍 Pesquisar card por nome..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', background: '#121212', color: '#fff', border: '1px solid #444', borderRadius: '6px', outline: 'none', boxSizing: 'border-box' }}
           />
         </div>
-        
+
         {mode !== 'view' && (
-          <div>
-            <button
-              onClick={handleSelectAllUnlocked}
-              style={{ padding: '10px 15px', background: '#4b5563', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ☑️ Selecionar Desbloqueadas
-            </button>
-          </div>
+          <button className="btn btn--sm btn--secondary" onClick={handleSelectAllUnlocked}>
+            ☑️ Selecionar Desbloqueadas
+          </button>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '13px', color: '#aaa' }}>Ordenar:</label>
+        <div className="field filter-bar__sort">
+          <label className="field__label" htmlFor="inventory-sort">Ordenar:</label>
           <select
+            id="inventory-sort"
+            className="field__select"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            style={{ padding: '10px', background: '#121212', color: '#ff9900', border: '1px solid #444', borderRadius: '6px', fontWeight: 'bold', outline: 'none' }}
           >
             <option value="name-asc">Nome (A–Z)</option>
             <option value="name-desc">Nome (Z–A)</option>
@@ -360,21 +371,25 @@ export default function Inventory({ user, setUser, openCard }) {
 
       {/* Grid de Cards Paginar */}
       {paginatedCards.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', background: '#1e1e2e', borderRadius: '8px', color: '#aaa' }}>
+        <div className="empty-state">
           {cards.length === 0 ? 'Nenhuma carta encontrada no teu inventário.' : 'Nenhum resultado corresponde à tua pesquisa.'}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
+        <div className="cards-grid">
           {paginatedCards.map((card) => {
-            const currentLevel = card.level || 1;
-            const currentXp = card.xp || 0;
-            const xpNeeded = currentLevel * 1000;
             const isChecked = selectedCards.includes(card.id_card);
             const isTarget = targetCardForFeed?.id_card === card.id_card;
 
             return (
-              <div
+              <MiniCard
                 key={card.id_card}
+                card={card}
+                mode={mode}
+                isChecked={isChecked}
+                isTarget={isTarget}
+                onToggle={handleCheckboxToggle}
+                onLock={toggleLock}
+                sellValue={sellValues[card.id_card]}
                 onClick={() => {
                   // Modo 'feed': seleciona a carta alvo para alimentação (comportamento original).
                   if (mode === 'feed') {
@@ -386,66 +401,7 @@ export default function Inventory({ user, setUser, openCard }) {
                   // Modo 'view': clicar na carta abre o detalhe (/cartas/:id).
                   if (mode === 'view') openCard(card.id_card);
                 }}
-                style={{
-                  background: isTarget ? '#1e3a8a' : isChecked ? '#2e1065' : '#1e1e2e',
-                  border: isTarget ? '2px solid #60a5fa' : isChecked ? '2px solid #a855f7' : (card.classe === 'UR' ? '2px solid #ffd700' : '1px solid #ff9900'),
-                  borderRadius: '10px',
-                  padding: '15px',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  position: 'relative',
-                  cursor: (mode === 'feed' && !targetCardForFeed && !card.is_locked) ? 'pointer' : 'default'
-                }}
-              >
-                <button
-                  onClick={(e) => toggleLock(e, card.id_card)}
-                  style={{ position: 'absolute', top: '8px', left: '8px', background: card.is_locked ? '#ef4444' : 'rgba(0,0,0,0.4)', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', color: '#fff', zIndex: 2 }}
-                >
-                  {card.is_locked ? '🔒' : '🔓'}
-                </button>
-
-                {mode !== 'view' && (!isTarget || mode === 'sell') && (
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    disabled={card.is_locked}
-                    onChange={() => handleCheckboxToggle(card)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ position: 'absolute', top: '10px', right: '10px', width: '18px', height: '18px', cursor: 'pointer', accentColor: '#a855f7', zIndex: 2 }}
-                  />
-                )}
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '8px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ background: card.classe === 'UR' ? '#ffd700' : '#444', color: card.classe === 'UR' ? '#000' : '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-                      {card.classe || 'E'}
-                    </span>
-                    <span style={{ background: '#22c55e', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-                      Nvl {currentLevel}
-                    </span>
-                    <OverallRankBadge card={card} />
-                  </div>
-
-                  {card.image_url ? (
-                    <img src={card.image_url} alt={card.name} style={{ width: '110px', height: '140px', objectFit: 'cover', borderRadius: '6px', marginBottom: '10px', border: '1px solid #444' }} />
-                  ) : (
-                    <div style={{ width: '110px', height: '140px', background: '#2a2a2a', margin: '0 auto 10px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', color: '#777', fontSize: '12px' }}>Sem Imagem</div>
-                  )}
-
-                  <h4 style={{ color: '#ff9900', margin: '0 0 4px 0', fontSize: '15px' }}>{card.name}</h4>
-                  <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '10px' }}>XP: {currentXp} / {xpNeeded}</div>
-                  
-                  {mode === 'sell' && isChecked && sellValues[card.id_card] !== undefined && (
-                    <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: 'bold', marginBottom: '6px' }}>💰 {sellValues[card.id_card]} Ryos</div>
-                  )}
-
-                  <div style={{ margin: '5px 0' }}>
-                    <CardStatsCompact card={card} fontSize="11px" gap="5px" />
-                  </div>
-                </div>
-              </div>
+              />
             );
           })}
         </div>
@@ -453,21 +409,21 @@ export default function Inventory({ user, setUser, openCard }) {
 
       {/* Controlo de Paginação */}
       {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginTop: '25px', flexWrap: 'wrap' }}>
+        <div className="pagination">
           <button
+            className="paginated-title__btn"
             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            style={{ padding: '8px 16px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
           >
             ← Anterior
           </button>
-          <span style={{ fontSize: '14px', color: '#ccc' }}>
+          <span className="paginated-title__label">
             Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({processedCards.length} cartas encontradas)
           </span>
           <button
+            className="paginated-title__btn"
             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
-            style={{ padding: '8px 16px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
           >
             Seguinte →
           </button>
