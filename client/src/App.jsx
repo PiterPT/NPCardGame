@@ -7,7 +7,6 @@ import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
 import CardDetail from './views/CardDetail';
 import { API_URL, authFetch, clearSession } from './lib/api';
-import './styles/global.css';
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -90,73 +89,79 @@ export default function App() {
   }
 
   return (
-    <div className="app-layout">
-      {/* Checkbox invisível para controlar o estado do menu através de CSS puro */}
+    <div className="app-shell">
+      {/* Mobile sidebar toggle checkbox */}
       <input type="checkbox" id="sidebar-toggle" className="sidebar-toggle-checkbox" />
 
-      {/* Overlay escuro de fundo para ecrãs móveis */}
+      {/* Overlay for mobile sidebar */}
       <label htmlFor="sidebar-toggle" className="menu-overlay"></label>
 
-      {/* Sidebar de Navegação */}
+      {/* Top HUD */}
+      <header className="app-hud">
+        <div className="app-hud__left">
+          <label htmlFor="sidebar-toggle" className="hamburger-btn" aria-label="Abrir Menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </label>
+        </div>
+        <div className="app-hud__center">
+          <div className="header-title">Centro de Controlo Ninja</div>
+        </div>
+        <div className="app-hud__right">
+          <span className="coin-badge">
+            💰 <strong>{user.coins ?? 0}</strong> Ryo
+          </span>
+          <span className="coin-badge" title="Diamantes">
+            💎 <strong>{user.diamonds ?? 0}</strong>
+          </span>
+          <span className="user-name">👤 <strong>{user.name}</strong></span>
+        </div>
+      </header>
+
+      {/* Sidebar */}
       <aside className="app-sidebar">
-        <h2 className="sidebar-brand">🥷 NINJA LEGENDS</h2>
-        
-        <div className="sidebar-section-title">Menu</div>
-        
-        <button onClick={() => handleNavClick('dashboard')} className={`nav-btn ${currentView === 'dashboard' ? 'active' : ''}`}>
-          📊 Dashboard
-        </button>
-        <button onClick={() => handleNavClick('inventory')} className={`nav-btn ${currentView === 'inventory' ? 'active' : ''}`}>
-          📜 Inventário / Equipa
-        </button>
-        <button onClick={() => handleNavClick('gacha')} className={`nav-btn ${currentView === 'gacha' ? 'active' : ''}`}>
-          🔮 Portal Gacha
-        </button>
-        <button onClick={() => handleNavClick('pvp')} className={`nav-btn ${currentView === 'pvp' ? 'active' : ''}`}>
-          ⚔️ Arena PvP & Infinito
-        </button>
+        <div className="app-sidebar__brand">
+          <h2 className="sidebar-brand">🥷 NINJA LEGENDS</h2>
+        </div>
 
-        {user.role === 'admin' && (
-          <>
-            <div className="sidebar-section-title admin-title">Admin</div>
-            <button onClick={() => handleNavClick('admin')} className={`nav-btn ${currentView === 'admin' ? 'active' : ''}`}>
-              ⚙️ Painel ADM
+        <div className="app-sidebar__section">
+          <div className="app-sidebar__section-title">Menu</div>
+          <nav className="app-sidebar__nav">
+            <button onClick={() => handleNavClick('dashboard')} className={`nav-btn ${currentView === 'dashboard' ? 'active' : ''}`}>
+              📊 Dashboard
             </button>
-          </>
-        )}
+            <button onClick={() => handleNavClick('inventory')} className={`nav-btn ${currentView === 'inventory' ? 'active' : ''}`}>
+              📜 Inventário / Equipa
+            </button>
+            <button onClick={() => handleNavClick('gacha')} className={`nav-btn ${currentView === 'gacha' ? 'active' : ''}`}>
+              🔮 Portal Gacha
+            </button>
+            <button onClick={() => handleNavClick('pvp')} className={`nav-btn ${currentView === 'pvp' ? 'active' : ''}`}>
+              ⚔️ Arena PvP & Infinito
+            </button>
 
-        <div className="sidebar-footer">
+            {user.role === 'admin' && (
+              <>
+                <div className="app-sidebar__section-title app-sidebar__section-title--admin">Admin</div>
+                <button onClick={() => handleNavClick('admin')} className={`nav-btn ${currentView === 'admin' ? 'active' : ''}`}>
+                  ⚙️ Painel ADM
+                </button>
+              </>
+            )}
+          </nav>
+        </div>
+
+        <div className="app-sidebar__footer">
           <button onClick={handleLogout} className="logout-btn">
             Terminar Sessão
           </button>
         </div>
       </aside>
 
-      {/* Conteúdo Principal / Top Bar */}
+      {/* Main content */}
       <main className="app-main">
-        <header className="app-header">
-          <div className="header-left">
-            {/* Botão Hambúrguer em formato de label ligada ao checkbox */}
-            <label htmlFor="sidebar-toggle" className="hamburger-btn" aria-label="Abrir Menu">
-              <span></span>
-              <span></span>
-              <span></span>
-            </label>
-            <div className="header-title">Centro de Controlo Ninja</div>
-          </div>
-
-          <div className="header-right">
-            <span className="coin-badge">
-              💰 <strong>{user.coins ?? 0}</strong> Ryo
-            </span>
-            <span className="coin-badge" title="Diamantes">
-              💎 <strong>{user.diamonds ?? 0}</strong>
-            </span>
-            <span className="user-name">👤 <strong>{user.name}</strong></span>
-          </div>
-        </header>
-
-        <div className="app-content-view">
+        <div className="app-content">
           {currentView === 'dashboard' && <Dashboard user={user} setCurrentView={setCurrentView} />}
           {currentView === 'inventory' && <Inventory user={user} setUser={handleUpdateUser} openCard={openCard} />}
           {currentView === 'gacha' && <Gacha user={user} setUser={handleUpdateUser} />}
@@ -174,6 +179,30 @@ export default function App() {
           {currentView === 'admin' && user.role === 'admin' && <AdminPanel />}
         </div>
       </main>
+
+      {/* Bottom Navigation (Mobile) */}
+      <nav className="app-nav-bottom" role="navigation" aria-label="Navegação principal">
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('dashboard')} aria-label="Taberna">
+          <span className="app-nav-bottom__icon">🏠</span>
+          <span>Taberna</span>
+        </button>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Inventário">
+          <span className="app-nav-bottom__icon">📜</span>
+          <span>Missões</span>
+        </button>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Heróis">
+          <span className="app-nav-bottom__icon">🎴</span>
+          <span>Heróis</span>
+        </button>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('gacha')} aria-label="Gacha">
+          <span className="app-nav-bottom__icon">🔮</span>
+          <span>Sorteio</span>
+        </button>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('admin')} aria-label="Loja/Menu" style={{ display: user.role === 'admin' ? 'flex' : 'none' }}>
+          <span className="app-nav-bottom__icon">⚙️</span>
+          <span>Menu</span>
+        </button>
+      </nav>
     </div>
   );
 }

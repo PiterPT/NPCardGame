@@ -1,0 +1,356 @@
+/* ============================================================
+   layout.css — App shell, HUD, bottom nav, sidebar, content
+   Estrutura e posicionamento apenas. Sem estilos visuais finais.
+   ============================================================ */
+
+/* ─── App Shell ─── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport for mobile */
+  background: var(--color-bg);
+  color: var(--color-fg);
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ─── Decorative Side Background (Desktop) ─── */
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-base);
+  background:
+    var(--texture-wood),
+    radial-gradient(ellipse 80% 100% at 50% 0%, var(--color-bg-elevated) 0%, transparent 60%),
+    var(--color-bg);
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-size: auto, cover, cover;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-slow);
+}
+
+@media (min-width: 768px) {
+  .app-shell::before {
+    opacity: 1;
+  }
+}
+
+/* ─── Mobile Sidebar Toggle (Checkbox Hack) ─── */
+.sidebar-toggle-checkbox {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Overlay for mobile sidebar */
+.menu-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: calc(var(--z-hud) - 1);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.sidebar-toggle-checkbox:checked ~ .menu-overlay {
+  display: block;
+  opacity: 1;
+}
+
+/* ─── Top HUD (Fixed) ─── */
+.app-hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--hud-height);
+  z-index: var(--z-hud);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--content-padding);
+  box-sizing: border-box;
+  /* Visual styles to be added by view-specific CSS */
+}
+
+/* HUD left/center/right zones */
+.app-hud__left,
+.app-hud__center,
+.app-hud__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.app-hud__center {
+  justify-content: center;
+  flex: 1;
+}
+
+.app-hud__right {
+  justify-content: flex-end;
+}
+
+/* Hamburger button (mobile only) */
+.hamburger-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: var(--touch-size);
+  height: var(--touch-size);
+  min-height: var(--touch-size);
+  min-width: var(--touch-size);
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.hamburger-btn span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--color-brand);
+  border-radius: 2px;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.hamburger-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@media (min-width: 768px) {
+  .hamburger-btn {
+    display: none;
+  }
+}
+
+/* ─── Sidebar (Desktop Fixed, Mobile Slide-in) ─── */
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  z-index: calc(var(--z-hud) + 1);
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--hud-height) + var(--space-4)) var(--space-4) var(--space-6);
+  box-sizing: border-box;
+  overflow-y: auto;
+  /* Visual styles (bg, border) to be added by view-specific CSS */
+}
+
+.app-sidebar__brand {
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-sidebar__section {
+  margin-bottom: var(--space-6);
+}
+
+.app-sidebar__section-title {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wider);
+  color: var(--color-fg-subtle);
+  margin: 0 0 var(--space-2);
+}
+
+.app-sidebar__section-title--admin {
+  margin-top: var(--space-4);
+}
+
+.app-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.app-sidebar__footer {
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Mobile sidebar slide-in */
+@media (max-width: 767px) {
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+    box-shadow: var(--shadow-xl);
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .sidebar-toggle-checkbox:checked ~ .app-sidebar {
+    transform: translateX(0);
+  }
+}
+
+@media (min-width: 768px) {
+  .app-sidebar {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* ─── Bottom Navigation (Mobile) ─── */
+.app-nav-bottom {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--nav-bottom-height);
+  z-index: var(--z-nav-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  /* Visual styles to be added by view-specific CSS */
+}
+
+.app-nav-bottom__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-height: var(--touch-size);
+  min-width: var(--touch-size);
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--color-fg-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.app-nav-bottom__icon {
+  font-size: var(--text-xl);
+  line-height: 1;
+}
+
+.app-nav-bottom__item:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Hide bottom nav on desktop */
+@media (min-width: 768px) {
+  .app-nav-bottom {
+    display: none;
+  }
+}
+
+/* ─── Main Content Area ─── */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* Desktop: offset for sidebar */
+  margin-left: 0;
+}
+
+@media (min-width: 768px) {
+  .app-main {
+    margin-left: var(--sidebar-width);
+  }
+}
+
+/* ─── Content Viewport (Scrollable) ─── */
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: calc(var(--hud-height) + var(--space-4)) var(--content-padding)
+           calc(var(--nav-bottom-height) + var(--space-6)) var(--content-padding);
+  box-sizing: border-box;
+  /* Visual styles to be added by view-specific CSS */
+}
+
+/* Desktop: no bottom nav padding needed */
+@media (min-width: 768px) {
+  .app-content {
+    padding-bottom: var(--space-8);
+  }
+}
+
+/* ─── Content Wrapper for Full-Width Sections ─── */
+.app-content__full {
+  max-width: none;
+  padding-left: var(--content-padding);
+  padding-right: var(--content-padding);
+}
+
+@media (min-width: 768px) {
+  .app-content__full {
+    max-width: calc(var(--content-max-width) + var(--sidebar-width));
+    margin-left: calc(-1 * var(--sidebar-width));
+    padding-left: calc(var(--content-padding) + var(--sidebar-width));
+  }
+}
+
+/* ─── Safe Area Insets (notched devices) ─── */
+@supports (padding: max(0px)) {
+  .app-hud {
+    padding-left: max(var(--content-padding), env(safe-area-inset-left));
+    padding-right: max(var(--content-padding), env(safe-area-inset-right));
+  }
+
+  .app-nav-bottom {
+    padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+    padding-left: max(var(--space-3), env(safe-area-inset-left));
+    padding-right: max(var(--space-3), env(safe-area-inset-right));
+  }
+
+  .app-content {
+    padding-left: max(var(--content-padding), env(safe-area-inset-left));
+    padding-right: max(var(--content-padding), env(safe-area-inset-right));
+  }
+}
+
+/* ─── Focus Visible Polyfill for Interactive Elements ─── */
+.app-hud :focus-visible,
+.app-sidebar :focus-visible,
+.app-nav-bottom :focus-visible,
+.app-content :focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ─── Skip Link (Accessibility) ─── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-4);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-brand);
+  color: var(--color-bg);
+  font-weight: var(--font-weight-bold);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+}
