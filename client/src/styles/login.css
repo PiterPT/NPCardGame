@@ -211,7 +211,7 @@
 }
 
 /* ─── Mode switch container ─── */
-.login-card > div:last-of-type {
+.login-mode-switch {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

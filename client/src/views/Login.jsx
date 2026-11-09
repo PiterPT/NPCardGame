@@ -59,11 +59,11 @@ export default function Login({ onLoginSuccess }) {
 
   return (
     <div className="login-wrapper">
-      <div className="login-card">
+      <div className="login-card panel--parchment">
         <h2 className="login-title">🥷 Ninja Legends</h2>
         
         {error && <div className="error-banner">{error}</div>}
-        {successMessage && <div className="success-banner" style={{ color: '#4ade80', marginBottom: '1rem', textAlign: 'center' }}>{successMessage}</div>}
+        {successMessage && <div className="success-banner">{successMessage}</div>}
 
         <form onSubmit={handleSubmit} className="login-form">
           {mode === 'register' && (
@@ -111,7 +111,7 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+        <div className="login-mode-switch">
           {mode !== 'login' && (
             <button 
               onClick={() => { setMode('login'); setError(''); setSuccessMessage(''); }} 

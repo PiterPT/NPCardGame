@@ -103,17 +103,17 @@ export default function Dashboard({ user, setCurrentView }) {
           <button className="section-action" onClick={() => setCurrentView('inventory')}>Gerir Equipa →</button>
         </div>
         {recentCards.length === 0 ? (
-          <p style={{ color: '#aaa', fontSize: '14px' }}>Ainda não tens cartas equipadas. Visita o Portal Gacha para invocar ninjas!</p>
+          <p className="empty-state">Ainda não tens cartas equipadas. Visita o Portal Gacha para invocar ninjas!</p>
         ) : (
           <div className="cards-row">
             {recentCards.slice(0, 3).map((card, idx) => (
               <div key={idx} className={`mini-card ${card.classe === 'UR' ? 'ur' : ''}`}>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                <div className="rank-badge-wrap">
                   <OverallRankBadge card={card} />
                 </div>
                 <img src={card.image_url || 'https://via.placeholder.com/90x115'} alt={card.name} />
-                <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#ff9900', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
-                <div style={{ marginTop: '4px' }}>
+                <div className="card-name card-name--brand">{card.name}</div>
+                <div className="card-stats-wrap">
                   <CardStatsCompact card={card} fontSize="10px" gap="4px" showNin={false} />
                 </div>
               </div>
@@ -130,22 +130,22 @@ export default function Dashboard({ user, setCurrentView }) {
         <div className="activities-grid">
           <div className="activity-card">
             <div>
-              <h4 style={{ margin: '0 0 5px 0', color: '#ff9900' }}>Portal Gacha</h4>
-              <p style={{ margin: 0, fontSize: '13px', color: '#aaa' }}>Invoca novas cartas lendárias para o teu esquadrão.</p>
+              <h4 className="activity-title">Portal Gacha</h4>
+              <p className="activity-desc">Invoca novas cartas lendárias para o teu esquadrão.</p>
             </div>
             <button className="activity-btn" onClick={() => setCurrentView('gacha')}>Sortear</button>
           </div>
           <div className="activity-card">
             <div>
-              <h4 style={{ margin: '0 0 5px 0', color: '#ff9900' }}>Inventário</h4>
-              <p style={{ margin: 0, fontSize: '13px', color: '#aaa' }}>Consulta a tua coleção completa de cartas.</p>
+              <h4 className="activity-title">Inventário</h4>
+              <p className="activity-desc">Consulta a tua coleção completa de cartas.</p>
             </div>
             <button className="activity-btn" onClick={() => setCurrentView('inventory')}>Ver Coleção</button>
           </div>
           <div className="activity-card">
             <div>
-              <h4 style={{ margin: '0 0 5px 0', color: '#ff9900' }}>Batalhas / Farm</h4>
-              <p style={{ margin: 0, fontSize: '13px', color: '#aaa' }}>Enfrenta adversários para ganhar recompensas e Ryo.</p>
+              <h4 className="activity-title">Batalhas / Farm</h4>
+              <p className="activity-desc">Enfrenta adversários para ganhar recompensas e Ryo.</p>
             </div>
             <button className="activity-btn" onClick={() => alert('Sistema de combate em breve!')}>Combater</button>
           </div>
@@ -159,18 +159,18 @@ export default function Dashboard({ user, setCurrentView }) {
           <button className="section-action" onClick={() => setCurrentView('inventory')}>Ver Inventário →</button>
         </div>
         {recentCards.length === 0 ? (
-          <p style={{ color: '#aaa', fontSize: '14px' }}>Nenhuma aquisição recente registada.</p>
+          <p className="empty-state">Nenhuma aquisição recente registada.</p>
         ) : (
           <div className="cards-row">
             {recentCards.map((card, idx) => (
               <div key={idx} className={`mini-card ${card.classe === 'UR' ? 'ur' : ''}`}>
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '10px', background: '#333', padding: '1px 6px', borderRadius: '4px', color: '#ff9900', fontWeight: 'bold' }}>{card.classe || 'E'}</span>
+                <div className="badge-row">
+                  <span className="classe-badge">{card.classe || 'E'}</span>
                   <OverallRankBadge card={card} />
                 </div>
-                <img src={card.image_url || 'https://via.placeholder.com/90x115'} alt={card.name} style={{ marginTop: '6px' }} />
-                <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
-                <div style={{ marginTop: '4px' }}>
+                <img src={card.image_url || 'https://via.placeholder.com/90x115'} alt={card.name} className="card-art--mini" />
+                <div className="card-name">{card.name}</div>
+                <div className="card-stats-wrap">
                   <CardStatsCompact card={card} fontSize="10px" gap="4px" />
                 </div>
               </div>
