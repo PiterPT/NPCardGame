@@ -7,7 +7,6 @@ import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
 import CardDetail from './views/CardDetail';
 import { API_URL, authFetch, clearSession } from './lib/api';
-import './styles/layout.css';
 export default function App() {
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('user');
