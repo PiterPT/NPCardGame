@@ -1,8 +1,172 @@
 /* ============================================================
-   global.css — Global utilities only
-   Layout, sidebar, header, hamburger, mobile nav moved to layout.css
+   global.css — Reset base + estilos visuais do shell da app
+   (layout.css trata só da estrutura/posicionamento)
    ============================================================ */
 
-/* No layout styles here anymore - they are in layout.css */
+/* ─── Reset base ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-/* Keep only truly global utilities if any */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ─── HUD (topo) ─── */
+.app-hud {
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+@media (min-width: 768px) {
+  .app-shell .app-hud {
+    padding-left: calc(var(--sidebar-width) + var(--content-padding));
+  }
+}
+
+.header-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-brand);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.coin-badge strong {
+  color: var(--color-brand);
+}
+
+.user-name {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* Telemóvel: HUD mais compacto */
+@media (max-width: 767px) {
+  .user-name {
+    display: none;
+  }
+  .header-title {
+    font-size: var(--text-base);
+  }
+}
+
+/* ─── Sidebar ─── */
+.app-sidebar {
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-border);
+}
+
+.sidebar-brand {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  color: var(--color-brand);
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--touch-size);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-fg-muted);
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.nav-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.nav-btn.active {
+  background: var(--color-bg-panel);
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  font-weight: var(--font-weight-semibold);
+}
+
+.logout-btn {
+  width: 100%;
+  min-height: var(--touch-size);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.logout-btn:hover {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+/* ─── Navegação inferior (mobile) ─── */
+.app-nav-bottom {
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border);
+}
+
+.app-nav-bottom__item:hover,
+.app-nav-bottom__item:active {
+  color: var(--color-brand);
+  background: var(--color-bg-hover);
+}
+
+/* ─── Conteúdo: mais largo em desktop (dashboard/gacha usam até ~1000px) ─── */
+@media (min-width: 768px) {
+  .app-content {
+    max-width: 1100px;
+  }
+}

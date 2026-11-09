@@ -262,6 +262,9 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Fica acima do fundo decorativo (.app-shell::before, position: fixed) */
+  position: relative;
+  z-index: 1;
   /* Desktop: offset for sidebar */
   margin-left: 0;
 }
