@@ -12,7 +12,7 @@ router.use('/admin', verifyAdmin);
 
 // ==========================================
 // FUNÇÃO AUXILIAR: processar image_url para B2
-// ==========================================
+  // ==========================================
 
 // Limite máximo de imagem (2MB) — igual ao frontend
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
