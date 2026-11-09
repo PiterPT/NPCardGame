@@ -1,102 +1,295 @@
+/* ============================================================
+   login.css — Login / Register / Forgot password views
+   Uses theme.css variables and components.css base classes
+   Compatible with existing JSX class names
+   ============================================================ */
+
+/* ─── Wrapper ─── */
 .login-wrapper {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: radial-gradient(circle at center, #1e1e2e 0%, #121212 100%);
-  padding: 20px;
+  background: var(--color-bg);
+  padding: var(--space-4);
 }
 
+/* ─── Card (parchment panel) ─── */
 .login-card {
-  background: #1e1e2e;
-  border: 2px solid #ff9900;
-  border-radius: 16px;
-  padding: 35px;
   width: 100%;
   max-width: 400px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-  text-align: center;
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
 }
 
+.login-card.panel--parchment {
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.25),
+    var(--shadow-lg);
+}
+
+/* ─── Title (serif) ─── */
 .login-title {
-  color: #ff9900;
-  margin-bottom: 25px;
-  font-size: 26px;
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-brand);
+  margin: 0 0 var(--space-6);
+  text-align: center;
+  text-shadow: 0 1px 0 var(--parchment-highlight);
 }
 
+/* ─── Form ─── */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: var(--space-4);
 }
 
-.login-input {
-  background: #2a2a2a;
-  color: #fff;
-  border: 1px solid #444;
-  padding: 12px 15px;
-  border-radius: 8px;
-  font-size: 15px;
-  outline: none;
-  transition: border-color 0.2s;
+/* ─── Fields (compatible with .field / .field__input from components.css) ─── */
+.login-form .field,
+.login-form > .field { /* if JSX adds .field wrapper */ }
+.login-form .field__label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+  text-align: left;
+}
+
+/* Inputs — support both .field__input (component) and .login-input (existing JSX) */
+.login-form .field__input,
+.login-form .login-input {
   width: 100%;
+  min-height: var(--touch-size);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--color-fg);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   box-sizing: border-box;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
-.login-input:focus {
-  border-color: #ff9900;
+.login-form .field__input::placeholder,
+.login-form .login-input::placeholder {
+  color: var(--color-fg-subtle);
 }
 
+.login-form .field__input:hover,
+.login-form .login-input:hover {
+  border-color: var(--color-border-strong);
+}
+
+.login-form .field__input:focus,
+.login-form .login-input:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px var(--color-brand-glow);
+  background: var(--color-bg-panel);
+}
+
+.login-form .field__input:disabled,
+.login-form .login-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-form .field__input[aria-invalid="true"],
+.login-form .login-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.login-form .field__input[aria-invalid="true"]:focus,
+.login-form .login-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.25);
+}
+
+/* ─── Primary submit button (wide) — uses .btn--primary + .btn--block ─── */
 .login-btn {
-  background: #ff9900;
-  color: #000;
-  font-weight: bold;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 16px;
-  margin-top: 10px;
   width: 100%;
+  min-height: var(--touch-size-lg);
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-brand);
+  color: var(--color-bg);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .login-btn:hover:not(:disabled) {
-  background: #ffa81a;
-  box-shadow: 0 0 12px rgba(255, 153, 0, 0.4);
+  background: var(--color-brand-hover);
+  box-shadow: var(--shadow-brand);
 }
 
+.login-btn:active:not(:disabled) {
+  background: var(--color-brand-active);
+  transform: scale(0.98);
+}
+
+.login-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.login-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ─── Mode toggle buttons (ghost variant) ─── */
 .toggle-mode-btn {
+  width: 100%;
+  min-height: var(--touch-size);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-info);
   background: transparent;
-  border: none;
-  color: #00bcd4;
-  margin-top: 20px;
-  font-size: 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
   text-decoration: underline;
+  text-underline-offset: 2px;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.toggle-mode-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-brand);
+}
+
+.toggle-mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-mode-btn:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ─── Error / Success banners (using .state pattern) ─── */
+.error-banner,
+.success-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 .error-banner {
-  background: rgba(255, 77, 77, 0.15);
-  border: 1px solid #ff4d4d;
-  color: #ff4d4d;
-  padding: 10px;
-  border-radius: 6px;
-  margin-bottom: 15px;
-  font-size: 14px;
+  background: rgba(231, 76, 60, 0.15);
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
 }
 
-/* Adaptabilidade para ecrãs pequenos */
-@media (max-width: 480px) {
+.success-banner {
+  background: rgba(46, 204, 113, 0.15);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+/* ─── Mode switch container ─── */
+.login-card > div:last-of-type {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* ─── Responsive: < 480px ─── */
+@media (max-width: 479px) {
   .login-wrapper {
-    padding: 12px;
+    padding: var(--space-3);
   }
 
   .login-card {
-    padding: 24px 18px;
-    border-radius: 12px;
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
   }
 
   .login-title {
-    font-size: 22px;
-    margin-bottom: 20px;
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-4);
+  }
+
+  .login-form {
+    gap: var(--space-3);
+  }
+
+  .login-btn {
+    min-height: var(--touch-size);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .toggle-mode-btn {
+    min-height: var(--touch-size);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .error-banner,
+  .success-banner {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .login-form .field__input,
+  .login-form .login-input,
+  .login-btn,
+  .toggle-mode-btn {
+    transition: none;
+  }
+}
+
+/* ─── High contrast ─── */
+@media (prefers-contrast: high) {
+  .login-form .field__input,
+  .login-form .login-input {
+    border-color: #fff;
+  }
+
+  .login-form .field__input:focus,
+  .login-form .login-input:focus {
+    box-shadow: 0 0 0 3px #fff;
+  }
+
+  .login-btn {
+    border: 2px solid #fff;
+  }
+
+  .toggle-mode-btn {
+    border-color: #fff;
+  }
+
+  .error-banner {
+    border-color: #ff6b6b;
+  }
+
+  .success-banner {
+    border-color: #6bff6b;
   }
 }

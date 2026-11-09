@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import Inventory from './views/Inventory';
@@ -7,7 +7,7 @@ import AdminPanel from './views/AdminPanel';
 import Gacha from './views/Gacha';
 import CardDetail from './views/CardDetail';
 import { API_URL, authFetch, clearSession } from './lib/api';
-
+import './styles/layout.css';
 export default function App() {
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('user');
@@ -16,6 +16,7 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [cardId, setCardId] = useState(null);
+  const sidebarToggleRef = useRef(null);
 
   const handleUpdateUser = (updatedData) => {
     setUser(prev => {
@@ -69,12 +70,15 @@ export default function App() {
 
   const handleNavClick = (view) => {
     setCurrentView(view);
+    // Fecha a sidebar mobile (checkbox hack) depois de navegar.
+    if (sidebarToggleRef.current) sidebarToggleRef.current.checked = false;
   };
 
   // Detalhe de carta: /cartas/:id (estrutura atual usa estado em vez de router).
   const openCard = (id) => {
     setCardId(id);
     setCurrentView('card');
+    if (sidebarToggleRef.current) sidebarToggleRef.current.checked = false;
   };
 
   const goBackToInventory = () => {
@@ -91,7 +95,7 @@ export default function App() {
   return (
     <div className="app-shell">
       {/* Mobile sidebar toggle checkbox */}
-      <input type="checkbox" id="sidebar-toggle" className="sidebar-toggle-checkbox" />
+      <input type="checkbox" id="sidebar-toggle" className="sidebar-toggle-checkbox" ref={sidebarToggleRef} />
 
       {/* Overlay for mobile sidebar */}
       <label htmlFor="sidebar-toggle" className="menu-overlay"></label>
