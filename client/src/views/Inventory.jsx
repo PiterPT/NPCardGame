@@ -4,7 +4,7 @@ import MiniCard from '../components/MiniCard';
 import { API_URL, authFetch } from '../lib/api';
 import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 import '../styles/inventory.css';
-
+ 
 export default function Inventory({ user, setUser, openCard }) {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
