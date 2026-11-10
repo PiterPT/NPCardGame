@@ -1,82 +1,86 @@
-import React, { useState } from 'react';
-import { API_URL } from '../lib/api';
+import React from 'react';
+import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
 
-// Tenta vários nomes de campo comuns para a imagem da carta.
-// Se o teu campo tiver outro nome, acrescenta-o aqui.
-const IMAGE_FIELDS = ['image_url', 'imageUrl', 'image', 'img', 'imagem', 'url_imagem', 'art', 'thumbnail'];
+export default function MiniCard({ card, mode, isChecked, isTarget, onToggle, onLock, sellValue, onClick }) {
+  const currentLevel = card.level || 1;
+  const currentXp = card.xp || 0;
+  const xpNeeded = currentLevel * 1000;
+  const rarity = (card.classe || 'E').toLowerCase();
+  const selectable = mode === 'feed' && !isTarget && !card.is_locked;
 
-function resolveImage(card) {
-  for (const key of IMAGE_FIELDS) {
-    const v = card?.[key];
-    if (typeof v === 'string' && v.trim() !== '') {
-      if (/^(https?:|data:|blob:)/i.test(v)) return v;
-      return `${API_URL}${v.startsWith('/') ? '' : '/'}${v}`;
+  const handleKeyDown = (e) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
     }
-  }
-  return null;
-}
-
-export default function MiniCard({ card, mode, isChecked, isTarget, onToggle, onLock, onClick }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const src = resolveImage(card);
-  const showCheckbox = (mode === 'sell' || mode === 'feed') && !isTarget;
-  const selectable = mode === 'feed' || mode === 'view';
-
-  const classes = [
-    'card',
-    'mini-card',
-    isChecked ? 'mini-card--checked' : '',
-    isTarget ? 'mini-card--target' : '',
-    selectable ? 'mini-card--selectable' : ''
-  ].filter(Boolean).join(' ');
+  };
 
   return (
     <div
-      className={classes}
+      className={
+        'card mini-card' +
+        (isTarget ? ' mini-card--target' : '') +
+        (isChecked ? ' mini-card--checked' : '') +
+        (selectable ? ' mini-card--selectable' : '')
+      }
+      data-rarity={card.classe?.toLowerCase()}
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      role={selectable ? 'button' : undefined}
-      tabIndex={selectable ? 0 : undefined}
-      onKeyDown={(e) => {
-        if (selectable && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
-          onClick?.();
-        }
-      }}
-      title={card.name}
+      onKeyDown={handleKeyDown}
     >
       <button
         type="button"
-        className={`mini-card__lock${card.is_locked ? ' mini-card__lock--locked' : ''}`}
-        onClick={(e) => onLock?.(e, card.id_card)}
+        className={'mini-card__lock' + (card.is_locked ? ' mini-card__lock--locked' : '')}
         aria-label={card.is_locked ? 'Destrancar carta' : 'Trancar carta'}
-        aria-pressed={!!card.is_locked}
+        aria-pressed={card.is_locked}
+        onClick={(e) => onLock(e, card.id_card)}
       >
         {card.is_locked ? '🔒' : '🔓'}
       </button>
 
-      {showCheckbox && (
+      {mode !== 'view' && (!isTarget || mode === 'sell') && (
         <label className="mini-card__check" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
-            checked={!!isChecked}
-            disabled={!!card.is_locked}
-            onChange={() => onToggle?.(card)}
+            checked={isChecked}
+            disabled={card.is_locked}
             aria-label={`Selecionar ${card.name}`}
+            onChange={() => onToggle(card)}
+            onClick={(e) => e.stopPropagation()}
           />
         </label>
       )}
 
-      {src && !imgFailed ? (
-        <div className="card__art">
-          <img src={src} alt={card.name} loading="lazy" onError={() => setImgFailed(true)} />
-        </div>
-      ) : (
-        <div className="card__art card__art--placeholder">{card.name}</div>
-      )}
+      <div className="card__badges">
+        <span className="badge badge--rarity" data-rarity={rarity}>
+          {card.classe || 'E'}
+        </span>
+        <span className="badge badge--level">Nvl {currentLevel}</span>
+        <OverallRankBadge card={card} />
+      </div>
 
-      {/* Mantido no DOM para acessibilidade; o CSS esconde-o e o Inventory mostra nível/estrelas */}
+      <div className="card__art">
+        {card.image_url ? (
+          <img src={card.image_url} alt={card.name} />
+        ) : (
+          <div className="card__art--placeholder">Sem Imagem</div>
+        )}
+      </div>
+
       <div className="card__header">
-        <span className="card__name">{card.name}</span>
+        <h4 className="card__title">{card.name}</h4>
+        <div className="mini-card__xp">
+          XP: {currentXp} / {xpNeeded}
+        </div>
+        {mode === 'sell' && isChecked && sellValue !== undefined && (
+          <div className="mini-card__sell">💰 {sellValue} Ryos</div>
+        )}
+      </div>
+
+      <div className="card__stats">
+        <CardStatsCompact card={card} fontSize="11px" gap="5px" />
       </div>
     </div>
   );
