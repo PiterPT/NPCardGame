@@ -1,7 +1,7 @@
 /* ============================================================
    inventory.css — Inventário (Inventory.jsx + MiniCard.jsx)
    ============================================================ */
- 
+   
 /* ─── Container ─── */
 .inventory-container {
   padding: var(--space-5);
