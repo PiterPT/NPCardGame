@@ -283,3 +283,150 @@
   color: var(--color-success);
   font-weight: var(--font-weight-bold);
 }
+
+
+/* ============================================================
+   ESTILO "GAME LIST" — grelha densa de 5 colunas
+   ============================================================ */
+.inventory-container {
+  max-width: 560px;
+  padding: var(--space-2);
+  background: linear-gradient(180deg, #2b1c12 0%, #1a110a 100%);
+  border: 2px solid #6b4a2a;
+  border-radius: var(--radius-md);
+}
+
+.inventory-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-base);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-md);
+}
+
+.inventory-title__count {
+  font-size: var(--text-sm);
+  color: var(--color-brand);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Barra de pesquisa + ordenação numa só linha compacta */
+.filter-bar {
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2);
+  background: rgba(0, 0, 0, 0.4);
+  border-color: #6b4a2a;
+}
+.filter-bar__search { flex: 1 1 100%; }
+.filter-bar__sort { flex: 1 1 auto; }
+.filter-bar__sort .field__select { width: 100%; min-width: 0; }
+
+/* Modos como separadores finos */
+.mode-panel {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  gap: var(--space-2);
+  background: rgba(0, 0, 0, 0.4);
+}
+.mode-panel > .btn { flex: 1; }
+
+/* Grelha densa */
+.cards-grid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Carta compacta: só arte, nível e estrelas */
+.cards-grid .card {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-width: 2px;
+  border-radius: 4px;
+  box-shadow: none;
+  background: #000;
+}
+.cards-grid .card:hover { transform: none; filter: brightness(1.15); }
+
+.cards-grid .card__art,
+.cards-grid .card__art--placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+}
+.cards-grid .card__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Informação sobreposta no fundo da arte */
+.cards-grid .card__header {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 2px 1px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: left;
+  pointer-events: none;
+}
+.cards-grid .card__header * { font-size: inherit; margin: 0; }
+.cards-grid .card__name,
+.cards-grid .card__title { display: none; } /* nome escondido; abre-se no detalhe */
+
+.cards-grid .card__badges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px;
+  transform: scale(0.75);
+  transform-origin: top left;
+}
+
+/* Esconde stats e valores pesados da vista densa (mantém XP/venda) */
+.cards-grid .card__stats { display: none; }
+.mini-card__xp,
+.mini-card__sell { font-size: 9px; }
+
+/* Lock e checkbox mais pequenos para caberem na miniatura */
+.mini-card__lock,
+.mini-card__check {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+.mini-card__lock { top: 14px; left: 0; }
+.mini-card__check { top: 0; right: 0; }
+.mini-card__check input { width: 16px; height: 16px; }
+
+/* Paginação compacta */
+.pagination { margin-top: var(--space-2); gap: var(--space-2); }
+
+/* Ecrãs largos: mais colunas */
+@media (min-width: 900px) {
+  .inventory-container { max-width: 1000px; }
+  .cards-grid { grid-template-columns: repeat(8, 1fr); gap: 4px; }
+}

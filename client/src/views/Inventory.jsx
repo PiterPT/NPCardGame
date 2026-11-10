@@ -17,7 +17,7 @@ export default function Inventory({ user, setUser, openCard }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 8; // Quantidade de cards por página
+  const pageSize = 40; // 5 colunas × 8 linhas (ou 8 × 5 em ecrãs largos)
 
   // Previsões em tempo real
   const [sellPreview, setSellPreview] = useState(0);
@@ -265,16 +265,51 @@ export default function Inventory({ user, setUser, openCard }) {
 
   return (
     <div className="inventory-container">
-      <h2>📜 Inventário de Cartas do Shinobi</h2>
+      <h2 className="inventory-title">📜 Inventário <span className="inventory-title__count">{cards.length}</span></h2>
 
       {notification && (
         <div className={`notice notice--${notification.type}`}>{notification.text}</div>
       )}
 
+      {/* Barra de Pesquisa, Ordenação e Botão Select All */}
+      <div className="filter-bar">
+        <div className="field filter-bar__search">
+          <input
+            type="text"
+            className="field__input"
+            placeholder="🔍 Enter search term."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {mode !== 'view' && (
+          <button className="btn btn--sm btn--secondary" onClick={handleSelectAllUnlocked}>
+            ☑️ Selecionar Desbloqueadas
+          </button>
+        )}
+
+        <div className="field filter-bar__sort">
+          <label className="field__label sr-only" htmlFor="inventory-sort">Ordenar</label>
+          <select
+            id="inventory-sort"
+            className="field__select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="name-asc">Nome (A–Z)</option>
+            <option value="name-desc">Nome (Z–A)</option>
+            <option value="rarity-desc">Raridade (Decrescente)</option>
+            <option value="rarity-asc">Raridade (Crescente)</option>
+            <option value="level-desc">Level (Decrescente)</option>
+            <option value="level-asc">Level (Crescente)</option>
+          </select>
+        </div>
+      </div>
+
       {/* Painel de Modos */}
       <div className="mode-panel">
-        <span className="mode-panel__label">Modo:</span>
-        <button
+                <button
           className={`btn btn--sm ${mode === 'view' ? 'btn--primary' : 'btn--secondary'}`}
           onClick={() => { setMode('view'); setSelectedCards([]); setTargetCardForFeed(null); }}
         >
@@ -333,42 +368,6 @@ export default function Inventory({ user, setUser, openCard }) {
         )}
       </div>
 
-      {/* Barra de Pesquisa, Ordenação e Botão Select All */}
-      <div className="filter-bar">
-        <div className="field filter-bar__search">
-          <input
-            type="text"
-            className="field__input"
-            placeholder="🔍 Pesquisar card por nome..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        {mode !== 'view' && (
-          <button className="btn btn--sm btn--secondary" onClick={handleSelectAllUnlocked}>
-            ☑️ Selecionar Desbloqueadas
-          </button>
-        )}
-
-        <div className="field filter-bar__sort">
-          <label className="field__label" htmlFor="inventory-sort">Ordenar:</label>
-          <select
-            id="inventory-sort"
-            className="field__select"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="name-asc">Nome (A–Z)</option>
-            <option value="name-desc">Nome (Z–A)</option>
-            <option value="rarity-desc">Raridade (Decrescente)</option>
-            <option value="rarity-asc">Raridade (Crescente)</option>
-            <option value="level-desc">Level (Decrescente)</option>
-            <option value="level-asc">Level (Crescente)</option>
-          </select>
-        </div>
-      </div>
-
       {/* Grid de Cards Paginar */}
       {paginatedCards.length === 0 ? (
         <div className="empty-state">
@@ -418,7 +417,7 @@ export default function Inventory({ user, setUser, openCard }) {
             ← Anterior
           </button>
           <span className="paginated-title__label">
-            Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({processedCards.length} cartas encontradas)
+            <strong>{currentPage}</strong> / <strong>{totalPages}</strong>
           </span>
           <button
             className="paginated-title__btn"
