@@ -100,29 +100,8 @@ export default function App() {
       <label htmlFor="sidebar-toggle" className="menu-overlay"></label>
 
       {/* Top HUD */}
-      <header className="app-hud" aria-label="Barra superior">
+      <header className="app-hud">
         <div className="app-hud__left">
-          <button
-            className="app-hud__back-btn"
-            aria-label="Voltar ao inventário"
-            onClick={goBackToInventory}
-          >
-            <svg
-              className="app-hud__back-icon"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
           <label htmlFor="sidebar-toggle" className="hamburger-btn" aria-label="Abrir Menu">
             <span></span>
             <span></span>
@@ -130,74 +109,16 @@ export default function App() {
           </label>
         </div>
         <div className="app-hud__center">
-          <div className="app-hud__player-info">
-            <span className="app-hud__player-name">{user.name}</span>
-            <button
-              className="app-hud__stamina-plus"
-              aria-label="Recarregar energia"
-            >
-              +
-            </button>
-          </div>
-          <div
-            className="app-hud__rank-wrap"
-            title={`Rank geral S`}
-          >
-            <span
-              className="app-hud__rank-shield app-hud__rank-shield--rank"
-              style={{
-                '--rank-color': 'var(--rank-s)',
-                color: 'var(--rank-s)',
-                borderColor: 'var(--rank-s)'
-              }}
-            >
-              S
-            </span>
-          </div>
+          <div className="header-title">Centro de Controlo Ninja</div>
         </div>
         <div className="app-hud__right">
-          <div className="app-hud__pill" aria-label="Moedas">
-            <span className="pill-icon">💰</span>
-            <span className="pill-value">{user.coins ?? 0}</span>
-            <button
-              className="pill-plus"
-              aria-label="Adicionar moedas"
-            >
-              +
-            </button>
-          </div>
-          <div className="app-hud__pill" aria-label="Diamantes">
-            <span className="pill-icon">💎</span>
-            <span className="pill-value">{user.diamonds ?? 0}</span>
-            <button
-              className="pill-plus"
-              aria-label="Adicionar diamantes"
-            >
-              +
-            </button>
-          </div>
-          <button
-            className="app-hud__mail-btn"
-            aria-label="Correio (0 não lidos)"
-          >
-            <svg
-              className="app-hud__mail-icon"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="3" y="3" width="18" height="14" rx="2" ry="2" />
-              <polyline points="7 9 12 13 19 9" />
-              <line x1="3" y1="17" x2="21" y2="17" />
-            </svg>
-            <span className="app-hud__mail-badge app-hud__mail-badge--empty">0</span>
-          </button>
+          <span className="coin-badge">
+            💰 <strong>{user.coins ?? 0}</strong> Ryo
+          </span>
+          <span className="coin-badge" title="Diamantes">
+            💎 <strong>{user.diamonds ?? 0}</strong>
+          </span>
+          <span className="user-name">👤 <strong>{user.name}</strong></span>
         </div>
       </header>
 
@@ -262,110 +183,26 @@ export default function App() {
         </div>
       </main>
 
-      {/* Bottom Navigation (Mobile + Desktop) */}
+      {/* Bottom Navigation (Mobile) */}
       <nav className="app-nav-bottom" role="navigation" aria-label="Navegação principal">
-        <button
-          className={`app-nav-bottom__item${currentView === 'dashboard' ? ' app-nav-bottom__item--active' : ''}`}
-          onClick={() => handleNavClick('dashboard')}
-          aria-label="Taberna"
-        >
-          <svg
-            className="app-nav-bottom__icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('dashboard')} aria-label="Taberna">
+          <span className="app-nav-bottom__icon">🏠</span>
           <span>Taberna</span>
         </button>
-        <button
-          className={`app-nav-bottom__item app-nav-bottom__item--new${currentView === 'inventory' ? ' app-nav-bottom__item--active' : ''}`}
-          onClick={() => handleNavClick('inventory')}
-          aria-label="Inventário"
-        >
-          <svg
-            className="app-nav-bottom__icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="6 9 18 9" />
-            <polyline points="6 15 18 15" />
-          </svg>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Inventário">
+          <span className="app-nav-bottom__icon">📜</span>
           <span>Missões</span>
-          <span className="app-nav-bottom__new-badge" aria-hidden="true">!</span>
         </button>
-        <button
-          className={`app-nav-bottom__item${currentView === 'inventory' ? ' app-nav-bottom__item--active' : ''}`}
-          onClick={() => handleNavClick('inventory')}
-          aria-label="Heróis"
-        >
-          <svg
-            className="app-nav-bottom__icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="3" y="3" width="7" height="18" rx="2" ry="2" />
-            <rect x="14" y="3" width="7" height="18" rx="2" ry="2" />
-          </svg>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Heróis">
+          <span className="app-nav-bottom__icon">🎴</span>
           <span>Heróis</span>
         </button>
-        <button
-          className={`app-nav-bottom__item${currentView === 'gacha' ? ' app-nav-bottom__item--active' : ''}`}
-          onClick={() => handleNavClick('gacha')}
-          aria-label="Gacha"
-        >
-          <svg
-            className="app-nav-bottom__icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 8v8M8 12h8" />
-            <path d="M16 8 12 4 8 8M16 16 12 20 8 16" />
-          </svg>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('gacha')} aria-label="Gacha">
+          <span className="app-nav-bottom__icon">🔮</span>
           <span>Sorteio</span>
         </button>
-        <button
-          className={`app-nav-bottom__item${currentView === 'admin' ? ' app-nav-bottom__item--active' : ''}`}
-          onClick={() => handleNavClick('admin')}
-          aria-label="Loja/Menu"
-          style={{ display: user.role === 'admin' ? 'flex' : 'none' }}
-        >
-          <svg
-            className="app-nav-bottom__icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v3M12 21v3M4.22 4.22l1.3 1.3M18.48 18.48l1.3 1.3M1 12h3M21 12h3M4.22 19.78l1.3-1.3M18.48 5.52l1.3-1.3" />
-          </svg>
+        <button className="app-nav-bottom__item" onClick={() => handleNavClick('admin')} aria-label="Loja/Menu" style={{ display: user.role === 'admin' ? 'flex' : 'none' }}>
+          <span className="app-nav-bottom__icon">⚙️</span>
           <span>Menu</span>
         </button>
       </nav>

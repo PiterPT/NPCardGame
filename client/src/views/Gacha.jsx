@@ -1,16 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { API_URL, authFetch } from '../lib/api';
 import { OverallRankBadge, CardStatsCompact } from '../lib/statRank';
-import '../styles/gacha.css';
 
-// Cores de raridade tratadas pelo CSS via data-rarity (theme.css --rarity-*)
 const CLASS_META = {
-  R: { label: 'R' },
-  SR: { label: 'SR' },
-  SSR: { label: 'SSR' }
+  R: { label: 'R', color: '#60a5fa', border: '1px solid #3b82f6' },
+  SR: { label: 'SR', color: '#c084fc', border: '2px solid #a855f7' },
+  SSR: { label: 'SSR', color: '#fbbf24', border: '2px solid #f59e0b' }
 };
-
-const rarityKey = (classe) => String(classe || '').toLowerCase();
 
 const fmtPct = (p) => {
   const value = (p * 100).toFixed(2);
@@ -89,23 +85,11 @@ export default function Gacha({ user, setUser }) {
   };
 
   if (loadingBanners) {
-    return (
-      <div className="gacha-container">
-        <div className="state" role="status">
-          <p className="state__desc">A carregar banners…</p>
-        </div>
-      </div>
-    );
+    return <div style={{ padding: '40px', textAlign: 'center', color: '#fff' }}>A carregar banners…</div>;
   }
 
   if (!banner) {
-    return (
-      <div className="gacha-container">
-        <div className="state state--error" role="alert">
-          <p className="state__desc">{error || 'Banners indisponíveis.'}</p>
-        </div>
-      </div>
-    );
+    return <div style={{ padding: '40px', textAlign: 'center', color: '#f87171' }}>{error || 'Banners indisponíveis.'}</div>;
   }
 
   const pity = banner.pity;
@@ -113,126 +97,120 @@ export default function Gacha({ user, setUser }) {
   const pityLeft = Math.max(0, pity.hardDiamonds - pity.diamondsSinceSsr);
 
   return (
-    <div className="gacha-container">
-      <h2 className="gacha-title">🔮 Portal de Invocação Gacha</h2>
+    <div style={{ padding: '20px', color: '#fff', maxWidth: '960px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <h2 style={{ color: '#ff9900', textAlign: 'center', marginBottom: '20px' }}>🔮 Portal de Invocação Gacha</h2>
 
       {/* Seletor de banners (nomes vindos do servidor) */}
-      <div className="banner-selector" role="group" aria-label="Selecionar banner">
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '25px', flexWrap: 'wrap' }}>
         {banners.map((b) => (
           <button
             key={b.id}
-            aria-pressed={selectedBannerId === b.id}
-            className={`banner-card${selectedBannerId === b.id ? ' banner-card--active' : ''}`}
             onClick={() => { setSelectedBannerId(b.id); setPulledCards(null); setError(''); }}
+            style={{
+              padding: '10px 20px',
+              background: selectedBannerId === b.id ? '#ff9900' : '#1e1e2e',
+              color: selectedBannerId === b.id ? '#000' : '#fff',
+              border: '1px solid #ff9900',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
           >
             {b.name}
           </button>
         ))}
       </div>
 
-      <div className="gacha-panel">
-        <h3 className="gacha-panel__title">{banner.name}</h3>
+      <div style={{ background: '#1e1e2e', border: '2px solid #ff9900', borderRadius: '12px', padding: '25px', textAlign: 'center', marginBottom: '25px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
+        <h3 style={{ color: '#ff9900', fontSize: '22px', marginBottom: '10px' }}>{banner.name}</h3>
 
         {/* Taxas reais por raridade */}
-        <div className="rates-panel" role="group" aria-label="Taxas por raridade">
+        <div style={{ background: '#121212', padding: '12px', borderRadius: '8px', marginBottom: '20px', display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '10px' }}>
           {Object.entries(banner.probabilities).map(([classe, prob]) => (
-            <div key={classe} className="gacha-rate" data-rarity={rarityKey(classe)}>
-              <span className="gacha-rate__label">{classe}</span>
-              <strong className="gacha-rate__value">{fmtPct(prob)}</strong>
+            <div key={classe} style={{ fontSize: '13px', textAlign: 'center' }}>
+              <span style={{ color: CLASS_META[classe]?.color || '#aaa', display: 'block', fontWeight: 'bold' }}>{classe}</span>
+              <strong style={{ color: '#fff' }}>{fmtPct(prob)}</strong>
             </div>
           ))}
         </div>
 
         {/* Progresso do pity */}
-        <div className="pity-panel">
-          <div className="pity-panel__header">
+        <div style={{ marginBottom: '18px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#aaa', marginBottom: '6px' }}>
             <span>Pity SSR</span>
             <span>
               {pity.diamondsSinceSsr} / {pity.hardDiamonds} 💎
               {pityLeft > 0 ? ` (faltam ${pityLeft} 💎)` : ' — SSR garantido no próximo roll!'}
             </span>
           </div>
-          <div
-            className="pity-bar"
-            role="progressbar"
-            aria-label="Progresso do pity SSR"
-            aria-valuemin={0}
-            aria-valuemax={pity.hardDiamonds}
-            aria-valuenow={pity.diamondsSinceSsr}
-          >
-            <div
-              className={`pity-bar__fill${pityLeft === 0 ? ' pity-bar__fill--ready' : ''}`}
-              style={{ width: `${pityPct}%` }}
-            />
+          <div style={{ height: '10px', background: '#333', borderRadius: '5px', overflow: 'hidden' }}>
+            <div style={{ width: `${pityPct}%`, height: '100%', background: pityLeft === 0 ? '#f59e0b' : '#00bcd4' }} />
           </div>
           {pity.softDiamonds && (
-            <p className="pity-panel__note">
+            <div style={{ fontSize: '12px', color: '#aaa', marginTop: '6px' }}>
               Pity suave a partir de {pity.softDiamonds} 💎 (SSR +{(pity.softRateStep * 100).toFixed(1)}%/roll).
-            </p>
+            </div>
           )}
-          <p className="pity-panel__note pity-panel__note--muted">
+          <div style={{ fontSize: '12px', color: '#777', marginTop: '4px' }}>
             SSR garantido em {pity.hardRolls} rolls de 1x.
-          </p>
+          </div>
         </div>
 
-        <p className="gacha-balance">
-          💎 O teu saldo: <strong className="gacha-balance__value">{diamonds} diamantes</strong>
-        </p>
+        <div style={{ marginBottom: '15px', fontSize: '15px' }}>
+          💎 O teu saldo: <strong style={{ color: '#00bcd4' }}>{diamonds} diamantes</strong>
+        </div>
 
         {error && (
-          <div className="notice notice--error" role="alert">
+          <div style={{ marginBottom: '15px', padding: '10px', borderRadius: '6px', background: 'rgba(248,113,113,0.15)', color: '#f87171', fontSize: '14px' }}>
             {error}
           </div>
         )}
 
-        <div className="gacha-pull-actions">
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
           <button
             disabled={pulling}
             onClick={() => handlePull(1)}
-            className="btn btn--md btn--primary btn--cost gacha-pull-btn gacha-pull-btn--info"
-            data-cost={`${banner.cost1x} 💎`}
+            style={{ padding: '12px 25px', background: '#00bcd4', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: pulling ? 'not-allowed' : 'pointer', opacity: pulling ? 0.6 : 1 }}
           >
-            {pulling ? '✨ A invocar…' : 'Invocação x1'}
+            {pulling ? '✨ A invocar…' : `Invocação x1 (${banner.cost1x} 💎)`}
           </button>
           <button
             disabled={pulling}
             onClick={() => handlePull(10)}
-            className="btn btn--md btn--primary btn--cost gacha-pull-btn"
-            data-cost={`${banner.cost10x} 💎`}
+            style={{ padding: '12px 25px', background: '#ff9900', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '8px', cursor: pulling ? 'not-allowed' : 'pointer', opacity: pulling ? 0.6 : 1 }}
           >
-            {pulling ? '✨ A invocar…' : 'Invocação x10'}
+            {pulling ? '✨ A invocar…' : `Invocação x10 (${banner.cost10x} 💎)`}
           </button>
         </div>
       </div>
 
       {/* Resultados */}
       {pulledCards && (
-        <section className="gacha-results-panel">
-          <h3 className="gacha-results-title">📜 Resultado da Invocação:</h3>
-          <div className="gacha-results">
+        <div style={{ background: '#1e1e2e', border: '1px solid #00bcd4', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+          <h3 style={{ color: '#00bcd4', marginBottom: '15px' }}>📜 Resultado da Invocação:</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '15px' }}>
             {pulledCards.map((card, i) => {
-              const meta = CLASS_META[card.classe] || { label: card.classe };
-              const rarity = rarityKey(card.classe);
+              const meta = CLASS_META[card.classe] || { label: card.classe, color: '#aaa', border: '1px solid #444' };
               return (
-                <div key={i} className="gacha-result-card" data-rarity={rarity}>
-                  <div className="gacha-result-card__head">
-                    <span className="gacha-result-card__rarity" data-rarity={rarity}>{meta.label}</span>
+                <div key={i} style={{ background: '#121212', border: meta.border, borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', background: '#333', padding: '2px 6px', borderRadius: '4px', color: meta.color, fontWeight: 'bold' }}>{meta.label}</span>
                     <OverallRankBadge card={card} />
                   </div>
                   {card.image_url ? (
-                    <img className="gacha-result-card__img" src={card.image_url} alt={card.name} />
+                    <img src={card.image_url} alt={card.name} style={{ width: '90px', height: '110px', objectFit: 'cover', borderRadius: '4px', margin: '8px auto', display: 'block' }} />
                   ) : (
-                    <div className="gacha-result-card__noimg" aria-hidden="true">Sem Img</div>
+                    <div style={{ width: '90px', height: '110px', background: '#222', margin: '8px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#777' }}>Sem Img</div>
                   )}
-                  <div className="gacha-result-card__name" title={card.name}>{card.name}</div>
-                  <div className="gacha-result-card__stats">
+                  <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.name}</div>
+                  <div style={{ marginTop: '6px' }}>
                     <CardStatsCompact card={card} fontSize="10px" gap="4px" />
                   </div>
                 </div>
               );
             })}
           </div>
-        </section>
+        </div>
       )}
     </div>
   );
