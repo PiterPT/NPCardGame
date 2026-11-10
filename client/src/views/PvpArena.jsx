@@ -426,6 +426,19 @@ export default function PvpArena({ user, setUser }) {
   const MEDALS = ['🥇', '🥈', '🥉'];
   const rewardPreview = predictedReward(infiniteWave, infBestWave);
 
+  // --- Apresentação: aba Deck de Batalha (derivação de exibição, sem alterar lógica de negócio) ---
+  const teamCards = selectedDefense
+    .map((id) => inventory.find((c) => String(c.id_card) === String(id)))
+    .filter(Boolean);
+  const cardPower = (c) => Number(c.tai || 0) + Number(c.nin || 0);
+  const teamPower = teamCards.reduce((sum, c) => sum + cardPower(c), 0);
+  // Poder do inimigo não está disponível nesta aba (apenas apresentação); preenchido quando houver dados do adversário.
+  const enemyPower = 0;
+  const powerDiff = teamPower - enemyPower;
+  const diffClass =
+    powerDiff > 0 ? 'power-diff--advantage' : powerDiff < 0 ? 'power-diff--disadvantage' : 'power-diff--tie';
+  const diffSign = powerDiff > 0 ? '+' : powerDiff < 0 ? '-' : '';
+
   return (
     <div className="pvp-container">
       <h2 className="pvp-section-title">⚔️ Arena PvP & Modo Infinito</h2>
@@ -497,6 +510,75 @@ export default function PvpArena({ user, setUser }) {
               Não foi possível carregar as tuas cartas: {inventoryStatus.slice(6)}
             </div>
           )}
+          {/* Comparador de poder — "Poder total vs. Poder inimigo" (centrado) */}
+          <div className="power-comparator">
+            <div className="power-comparator--mine">
+              <span className="power-label">Teu poder</span>
+              <span className="power-total">{teamPower}</span>
+            </div>
+            <span className="power-vs" aria-hidden="true">VS</span>
+            <div className="power-comparator--enemy">
+              <span className="power-label">Poder inimigo</span>
+              <span className="power-total">{enemyPower}</span>
+            </div>
+            <span className={`power-diff ${diffClass}`}>{diffSign}{Math.abs(powerDiff)}</span>
+          </div>
+
+          {/* Slots da equipa em linha com marcadores MAIN / SUB (dentro de .panel, cards .card na horizontal) */}
+          <div className="panel team-row">
+            {teamCards.map((card, i) => {
+              const isMain = i === 0;
+              return (
+                <div
+                  key={String(card.id_card)}
+                  className={`team-slot ${isMain ? 'team-slot--main' : 'team-slot--sub'}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${isMain ? 'Carta principal' : 'Carta reserva'}: ${card.name}`}
+                  onClick={() => {
+                    deckDirty.current = true;
+                    setSelectedDefense((prev) => prev.filter((id) => String(id) !== String(card.id_card)));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      deckDirty.current = true;
+                      setSelectedDefense((prev) => prev.filter((id) => String(id) !== String(card.id_card)));
+                    }
+                  }}
+                >
+                  <div className="team-slot-label">{isMain ? 'MAIN' : 'SUB'}</div>
+                  <div className="team-slot-card card" data-rarity={String(card.classe || 'e').toLowerCase()}>
+                    <div className="card__art">
+                      {card.image_url ? (
+                        <img src={imgSrc(card.image_url)} alt={card.name} />
+                      ) : (
+                        <div className="card__art--placeholder">Sem Imagem</div>
+                      )}
+                    </div>
+                    <div className="card__header">
+                      <h4 className="card__title">{card.name}</h4>
+                      <span className="badge badge--level">Nvl {card.level || 1}</span>
+                    </div>
+                    <div className="card__stats">
+                      <CardStatsCompact card={card} fontSize="10px" gap="4px" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {Array.from({ length: Math.max(0, 5 - teamCards.length) }).map((_, i) => (
+              <div key={`empty-${i}`} className="team-slot team-slot--sub team-slot--empty" aria-label="Slot vazio">
+                <div className="team-slot-label">SUB</div>
+                <div className="team-slot-card card">
+                  <span aria-hidden="true" style={{ opacity: 0.4 }}>
+                    +
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="pvp-deck-grid">
             {inventory.map(card => {
               const isSelected = selectedDefense.includes(card.id_card);

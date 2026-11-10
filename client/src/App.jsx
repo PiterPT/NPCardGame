@@ -262,26 +262,110 @@ export default function App() {
         </div>
       </main>
 
-      {/* Bottom Navigation (Mobile) */}
+      {/* Bottom Navigation (Mobile + Desktop) */}
       <nav className="app-nav-bottom" role="navigation" aria-label="Navegação principal">
-        <button className="app-nav-bottom__item" onClick={() => handleNavClick('dashboard')} aria-label="Taberna">
-          <span className="app-nav-bottom__icon">🏠</span>
+        <button
+          className={`app-nav-bottom__item${currentView === 'dashboard' ? ' app-nav-bottom__item--active' : ''}`}
+          onClick={() => handleNavClick('dashboard')}
+          aria-label="Taberna"
+        >
+          <svg
+            className="app-nav-bottom__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
           <span>Taberna</span>
         </button>
-        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Inventário">
-          <span className="app-nav-bottom__icon">📜</span>
+        <button
+          className={`app-nav-bottom__item app-nav-bottom__item--new${currentView === 'inventory' ? ' app-nav-bottom__item--active' : ''}`}
+          onClick={() => handleNavClick('inventory')}
+          aria-label="Inventário"
+        >
+          <svg
+            className="app-nav-bottom__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="6 9 18 9" />
+            <polyline points="6 15 18 15" />
+          </svg>
           <span>Missões</span>
+          <span className="app-nav-bottom__new-badge" aria-hidden="true">!</span>
         </button>
-        <button className="app-nav-bottom__item" onClick={() => handleNavClick('inventory')} aria-label="Heróis">
-          <span className="app-nav-bottom__icon">🎴</span>
+        <button
+          className={`app-nav-bottom__item${currentView === 'inventory' ? ' app-nav-bottom__item--active' : ''}`}
+          onClick={() => handleNavClick('inventory')}
+          aria-label="Heróis"
+        >
+          <svg
+            className="app-nav-bottom__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="7" height="18" rx="2" ry="2" />
+            <rect x="14" y="3" width="7" height="18" rx="2" ry="2" />
+          </svg>
           <span>Heróis</span>
         </button>
-        <button className="app-nav-bottom__item" onClick={() => handleNavClick('gacha')} aria-label="Gacha">
-          <span className="app-nav-bottom__icon">🔮</span>
+        <button
+          className={`app-nav-bottom__item${currentView === 'gacha' ? ' app-nav-bottom__item--active' : ''}`}
+          onClick={() => handleNavClick('gacha')}
+          aria-label="Gacha"
+        >
+          <svg
+            className="app-nav-bottom__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 8v8M8 12h8" />
+            <path d="M16 8 12 4 8 8M16 16 12 20 8 16" />
+          </svg>
           <span>Sorteio</span>
         </button>
-        <button className="app-nav-bottom__item" onClick={() => handleNavClick('admin')} aria-label="Loja/Menu" style={{ display: user.role === 'admin' ? 'flex' : 'none' }}>
-          <span className="app-nav-bottom__icon">⚙️</span>
+        <button
+          className={`app-nav-bottom__item${currentView === 'admin' ? ' app-nav-bottom__item--active' : ''}`}
+          onClick={() => handleNavClick('admin')}
+          aria-label="Loja/Menu"
+          style={{ display: user.role === 'admin' ? 'flex' : 'none' }}
+        >
+          <svg
+            className="app-nav-bottom__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v3M12 21v3M4.22 4.22l1.3 1.3M18.48 18.48l1.3 1.3M1 12h3M21 12h3M4.22 19.78l1.3-1.3M18.48 5.52l1.3-1.3" />
+          </svg>
           <span>Menu</span>
         </button>
       </nav>
