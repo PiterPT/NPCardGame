@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL, authFetch } from '../lib/api';
+import '../styles/admin.css';
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [cards, setCards] = useState([]);
   const [activeTab, setActiveTab] = useState('cards');
-  
+
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -137,42 +138,49 @@ export default function AdminPanel() {
   };
 
   return (
-    <div style={{ padding: '20px', color: '#fff', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>⚙️ ADM-Painel de Controlo Ninja</h1>
+    <div className="admin-container">
+      <h1 className="admin-title">⚙️ ADM-Painel de Controlo Ninja</h1>
 
-      {errorMsg && <div style={{ padding: '10px', background: '#ff4d4d', color: '#fff', borderRadius: '5px', marginBottom: '15px' }}>{errorMsg}</div>}
-      {loadingData && <div style={{ color: '#ff9900', marginBottom: '15px', fontWeight: 'bold' }}>A sincronizar dados...</div>}
+      {errorMsg && <div className="admin-error-banner">{errorMsg}</div>}
+      {loadingData && <div className="admin-loading">A sincronizar dados...</div>}
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', marginTop: '15px' }}>
-        <button onClick={() => setActiveTab('cards')} style={{ padding: '10px 20px', background: activeTab === 'cards' ? '#ff9900' : '#2a2a2a', border: 'none', color: activeTab === 'cards' ? '#000' : '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '5px' }}>
+      <div className="admin-tabs">
+        <button
+          onClick={() => setActiveTab('cards')}
+          className={`admin-tab ${activeTab === 'cards' ? 'admin-tab--active' : ''}`}
+        >
           🎴 Modelos de Cartas ({cards.length})
         </button>
-        <button onClick={() => setActiveTab('users')} style={{ padding: '10px 20px', background: activeTab === 'users' ? '#ff9900' : '#2a2a2a', border: 'none', color: activeTab === 'users' ? '#000' : '#fff', fontWeight: 'bold', cursor: 'pointer', borderRadius: '5px' }}>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`admin-tab ${activeTab === 'users' ? 'admin-tab--active' : ''}`}
+        >
           👥 Utilizadores ({users.length})
         </button>
       </div>
 
       {activeTab === 'cards' && (
         <div>
-          <form onSubmit={handleSaveCard} style={{ background: '#1e1e2e', padding: '20px', borderRadius: '8px', marginBottom: '25px', border: '1px solid #444', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <h3 style={{ margin: 0, color: '#ff9900' }}>{cardForm.id_modelcard ? '✏️ Editar Modelo de Carta' : '➕ Adicionar Novo Modelo de Carta'}</h3>
-            
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <input 
-                placeholder="Nome da Carta" 
-                value={cardForm.name} 
-                onChange={e => setCardForm({...cardForm, name: e.target.value})} 
-                required 
-                style={{ flex: 1, minWidth: '200px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '10px', borderRadius: '5px' }} 
+          <form onSubmit={handleSaveCard} className="admin-card-form">
+            <h3 className="admin-card-form__title">{cardForm.id_modelcard ? '✏️ Editar Modelo de Carta' : '➕ Adicionar Novo Modelo de Carta'}</h3>
+
+            <div className="admin-field-group">
+              <input
+                placeholder="Nome da Carta"
+                value={cardForm.name}
+                onChange={e => setCardForm({...cardForm, name: e.target.value})}
+                required
+                className="admin-input"
               />
-              
+
               {/* 2. Campo de Seleção da Classe (E ou UR) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <label>⭐ Classe:</label>
-                <select 
-                  value={cardForm.classe} 
+              <div className="admin-field-row">
+                <label className="admin-field-label">⭐ Classe:</label>
+                <select
+                  value={cardForm.classe}
                   onChange={e => setCardForm({...cardForm, classe: e.target.value})}
-                  style={{ background: '#2a2a2a', color: '#ff9900', border: '1px solid #444', padding: '10px', borderRadius: '5px', fontWeight: 'bold' }}>
+                  className="admin-select"
+                >
                   <option value="E">E (Comum)</option>
                   <option value="R">R (Rara)</option>
                   <option value="SR">SR (Super Rara)</option>
@@ -181,39 +189,39 @@ export default function AdminPanel() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <label>❤️ Vida:</label>
-                <input type="number" value={cardForm.vida} onChange={e => setCardForm({...cardForm, vida: Number(e.target.value)})} style={{ width: '80px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '10px', borderRadius: '5px' }} />
+              <div className="admin-field-row">
+                <label className="admin-field-label">❤️ Vida:</label>
+                <input type="number" value={cardForm.vida} onChange={e => setCardForm({...cardForm, vida: Number(e.target.value)})} className="admin-input" />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <label>⚔️ Tai:</label>
-                <input type="number" value={cardForm.tai} onChange={e => setCardForm({...cardForm, tai: Number(e.target.value)})} style={{ width: '80px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '10px', borderRadius: '5px' }} />
+              <div className="admin-field-row">
+                <label className="admin-field-label">⚔️ Tai:</label>
+                <input type="number" value={cardForm.tai} onChange={e => setCardForm({...cardForm, tai: Number(e.target.value)})} className="admin-input" />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <label>🌀 Nin:</label>
-                <input type="number" value={cardForm.nin} onChange={e => setCardForm({...cardForm, nin: Number(e.target.value)})} style={{ width: '80px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '10px', borderRadius: '5px' }} />
+              <div className="admin-field-row">
+                <label className="admin-field-label">🌀 Nin:</label>
+                <input type="number" value={cardForm.nin} onChange={e => setCardForm({...cardForm, nin: Number(e.target.value)})} className="admin-input" />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', color: '#aaa' }}>Carregar Imagem (Guardada na BD):</label>
-                <input type="file" accept="image/*" onChange={handleImageUpload} style={{ background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '8px', borderRadius: '5px', width: '100%' }} />
+            <div className="admin-field-group">
+              <div className="admin-file-group">
+                <label className="admin-field-label">Carregar Imagem (Guardada na BD):</label>
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="admin-file-input" />
               </div>
               {cardForm.image_url && (
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', display: 'block', color: '#aaa' }}>Pré-visualização:</span>
-                  <img src={cardForm.image_url} alt="Preview" style={{ width: '50px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ff9900' }} />
+                <div className="admin-preview">
+                  <span className="admin-preview-text">Pré-visualização:</span>
+                  <img src={cardForm.image_url} alt="Preview" className="admin-preview-img" />
                 </div>
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="submit" disabled={loadingAction} style={{ background: loadingAction ? '#555' : '#ff9900', color: '#000', fontWeight: 'bold', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}>
+            <div className="admin-field-group">
+              <button type="submit" disabled={loadingAction} className="admin-btn-submit">
                 {loadingAction ? '⏳ A processar...' : (cardForm.id_modelcard ? 'Guardar Alterações' : 'Criar Carta na BD')}
               </button>
               {cardForm.id_modelcard && (
-                <button type="button" onClick={() => setCardForm({ id_modelcard: null, name: '', vida: 500, tai: 50, nin: 200, image_url: '', classe: 'E' })} style={{ background: '#444', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}>
+                <button type="button" onClick={() => setCardForm({ id_modelcard: null, name: '', vida: 500, tai: 50, nin: 200, image_url: '', classe: 'E' })} className="admin-btn-cancel">
                   Cancelar Edição
                 </button>
               )}
@@ -221,34 +229,34 @@ export default function AdminPanel() {
           </form>
 
           {/* Grelha de Exibição das Cartas */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px' }}>
+          <div className="admin-card-grid">
             {cards.map(c => (
-              <div key={c.id_modelcard} style={{ background: '#1e1e2e', border: c.classe === 'UR' ? '2px solid #ffd700' : '1px solid #ff9900', padding: '15px', borderRadius: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div key={c.id_modelcard} className={`admin-card ${c.classe === 'UR' ? 'admin-card--rarity-ur' : ''}`}>
                 <div>
                   {/* Badge da Classe na Carta */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ background: c.classe === 'UR' ? '#ffd700' : '#444', color: c.classe === 'UR' ? '#000' : '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                  <div className="admin-card-badge-container">
+                    <span className={`admin-card-badge ${c.classe === 'UR' ? 'admin-card-badge--ur' : ''}`}>
                       {c.classe || 'E'}
                     </span>
                   </div>
 
                   {c.image_url ? (
-                    <img src={c.image_url} alt={c.name} style={{ width: '120px', height: '150px', objectFit: 'cover', borderRadius: '6px', marginBottom: '10px', border: '1px solid #444' }} />
+                    <img src={c.image_url} alt={c.name} className="admin-card-art" />
                   ) : (
-                    <div style={{ width: '120px', height: '150px', background: '#2a2a2a', margin: '0 auto 10px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', color: '#777', fontSize: '12px' }}>Sem Imagem</div>
+                    <div className="admin-card-art--missing">Sem Imagem</div>
                   )}
-                  
-                  <h4 style={{ color: '#ff9900', margin: '0 0 8px 0' }}>{c.name}</h4>
-                  <div style={{ fontSize: '13px', color: '#ddd', display: 'flex', justifyContent: 'space-around', margin: '8px 0' }}>
-                    <span>❤️ {c.vida}</span>
-                    <span>⚔️ {c.tai}</span>
-                    <span>🌀 {c.nin}</span>
+
+                  <h4 className="admin-card-name">{c.name}</h4>
+                  <div className="admin-card-stats">
+                    <span className="admin-card-stat">❤️ {c.vida}</span>
+                    <span className="admin-card-stat">⚔️ {c.tai}</span>
+                    <span className="admin-card-stat">🌀 {c.nin}</span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                  <button onClick={() => setCardForm(c)} style={{ flex: 1, background: '#ff9900', color: '#000', fontWeight: 'bold', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>Editar</button>
-                  <button onClick={() => handleCardDelete(c.id_modelcard)} style={{ flex: 1, background: '#ff4d4d', color: '#fff', fontWeight: 'bold', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>Remover</button>
+                <div className="admin-card-actions">
+                  <button onClick={() => setCardForm(c)} className="admin-btn-edit">Editar</button>
+                  <button onClick={() => handleCardDelete(c.id_modelcard)} className="admin-btn-delete">Remover</button>
                 </div>
               </div>
             ))}
@@ -257,35 +265,35 @@ export default function AdminPanel() {
       )}
 
       {activeTab === 'users' && (
-        <div style={{ background: '#1e1e2e', borderRadius: '8px', overflow: 'hidden', border: '1px solid #444' }}>
-          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+        <div className="admin-users-table">
+          <table className="admin-table">
             <thead>
-              <tr style={{ background: '#2a2a2a', color: '#ff9900', borderBottom: '1px solid #444' }}>
-                <th style={{ padding: '12px' }}>ID</th>
-                <th style={{ padding: '12px' }}>Nome</th>
-                <th style={{ padding: '12px' }}>Email</th>
-                <th style={{ padding: '12px' }}>Moedas (Ryo)</th>
-                <th style={{ padding: '12px' }}>Cargo</th>
-                <th style={{ padding: '12px' }}>Ações</th>
+              <tr className="admin-table--head">
+                <th className="admin-table--cell">ID</th>
+                <th className="admin-table--cell">Nome</th>
+                <th className="admin-table--cell">Email</th>
+                <th className="admin-table--cell">Moedas (Ryo)</th>
+                <th className="admin-table--cell">Cargo</th>
+                <th className="admin-table--cell">Ações</th>
               </tr>
             </thead>
             <tbody>
               {users.map(u => (
-                <tr key={u.id_user} style={{ borderBottom: '1px solid #333' }}>
-                  <td style={{ padding: '12px' }}>{u.id_user}</td>
-                  <td style={{ padding: '12px' }}>{u.name}</td>
-                  <td style={{ padding: '12px' }}>{u.email}</td>
-                  <td style={{ padding: '12px' }}>
-                    <input type="number" defaultValue={u.coins} onBlur={(e) => handleUserUpdate(u.id_user, Number(e.target.value), u.role)} style={{ width: '90px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '6px', borderRadius: '4px' }} />
+                <tr key={u.id_user} className="admin-table--row">
+                  <td className="admin-table--cell">{u.id_user}</td>
+                  <td className="admin-table--cell">{u.name}</td>
+                  <td className="admin-table--cell">{u.email}</td>
+                  <td className="admin-table--cell">
+                    <input type="number" defaultValue={u.coins} onBlur={(e) => handleUserUpdate(u.id_user, Number(e.target.value), u.role)} className="admin-table-input" />
                   </td>
-                  <td style={{ padding: '12px' }}>
-                    <select defaultValue={u.role} onChange={(e) => handleUserUpdate(u.id_user, u.coins, e.target.value)} style={{ background: '#2a2a2a', color: '#fff', border: '1px solid #444', padding: '6px', borderRadius: '4px' }}>
+                  <td className="admin-table--cell">
+                    <select defaultValue={u.role} onChange={(e) => handleUserUpdate(u.id_user, u.coins, e.target.value)} className="admin-table-select">
                       <option value="user">User</option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>
-                  <td style={{ padding: '12px' }}>
-                    <button onClick={() => handleUserDelete(u.id_user)} style={{ background: '#ff4d4d', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Eliminar</button>
+                  <td className="admin-table--cell">
+                    <button onClick={() => handleUserDelete(u.id_user)} className="admin-btn-delete">Eliminar</button>
                   </td>
                 </tr>
               ))}

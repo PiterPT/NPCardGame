@@ -100,8 +100,29 @@ export default function App() {
       <label htmlFor="sidebar-toggle" className="menu-overlay"></label>
 
       {/* Top HUD */}
-      <header className="app-hud">
+      <header className="app-hud" aria-label="Barra superior">
         <div className="app-hud__left">
+          <button
+            className="app-hud__back-btn"
+            aria-label="Voltar ao inventário"
+            onClick={goBackToInventory}
+          >
+            <svg
+              className="app-hud__back-icon"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
           <label htmlFor="sidebar-toggle" className="hamburger-btn" aria-label="Abrir Menu">
             <span></span>
             <span></span>
@@ -109,16 +130,74 @@ export default function App() {
           </label>
         </div>
         <div className="app-hud__center">
-          <div className="header-title">Centro de Controlo Ninja</div>
+          <div className="app-hud__player-info">
+            <span className="app-hud__player-name">{user.name}</span>
+            <button
+              className="app-hud__stamina-plus"
+              aria-label="Recarregar energia"
+            >
+              +
+            </button>
+          </div>
+          <div
+            className="app-hud__rank-wrap"
+            title={`Rank geral S`}
+          >
+            <span
+              className="app-hud__rank-shield app-hud__rank-shield--rank"
+              style={{
+                '--rank-color': 'var(--rank-s)',
+                color: 'var(--rank-s)',
+                borderColor: 'var(--rank-s)'
+              }}
+            >
+              S
+            </span>
+          </div>
         </div>
         <div className="app-hud__right">
-          <span className="coin-badge">
-            💰 <strong>{user.coins ?? 0}</strong> Ryo
-          </span>
-          <span className="coin-badge" title="Diamantes">
-            💎 <strong>{user.diamonds ?? 0}</strong>
-          </span>
-          <span className="user-name">👤 <strong>{user.name}</strong></span>
+          <div className="app-hud__pill" aria-label="Moedas">
+            <span className="pill-icon">💰</span>
+            <span className="pill-value">{user.coins ?? 0}</span>
+            <button
+              className="pill-plus"
+              aria-label="Adicionar moedas"
+            >
+              +
+            </button>
+          </div>
+          <div className="app-hud__pill" aria-label="Diamantes">
+            <span className="pill-icon">💎</span>
+            <span className="pill-value">{user.diamonds ?? 0}</span>
+            <button
+              className="pill-plus"
+              aria-label="Adicionar diamantes"
+            >
+              +
+            </button>
+          </div>
+          <button
+            className="app-hud__mail-btn"
+            aria-label="Correio (0 não lidos)"
+          >
+            <svg
+              className="app-hud__mail-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="18" height="14" rx="2" ry="2" />
+              <polyline points="7 9 12 13 19 9" />
+              <line x1="3" y1="17" x2="21" y2="17" />
+            </svg>
+            <span className="app-hud__mail-badge app-hud__mail-badge--empty">0</span>
+          </button>
         </div>
       </header>
 
