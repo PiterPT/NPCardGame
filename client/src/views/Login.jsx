@@ -60,7 +60,7 @@ export default function Login({ onLoginSuccess }) {
   return (
     <div className="login-wrapper">
       <div className="login-card panel--parchment">
-        <h2 className="login-title">🥷 Ninja Legends</h2>
+        <h2 className="login-title">🥷 NP Card Game</h2>
         
         {error && <div className="error-banner">{error}</div>}
         {successMessage && <div className="success-banner">{successMessage}</div>}

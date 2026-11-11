@@ -125,7 +125,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="app-sidebar">
         <div className="app-sidebar__brand">
-          <h2 className="sidebar-brand">🥷 NINJA LEGENDS</h2>
+          <h2 className="sidebar-brand">🥷 NP Card Game</h2>
         </div>
 
         <div className="app-sidebar__section">
